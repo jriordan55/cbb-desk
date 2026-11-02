@@ -287,7 +287,7 @@
   <div class="brand"><b>CBB TRADING DESK</b></div>
   <div class="actions">
     <span class="status" id="status"></span>
-    <button class="ghost" id="refresh" type="button">Refresh odds</button>
+    
   </div>
 </header>
 <div class="toolbar">
@@ -304,6 +304,7 @@
 </div>
 <script>
 const $ = (id) => document.getElementById(id);
+const CBB_STATIC = true;
 const state = { book: null, view: "edges", game: "", market: "all", player: "", q: "", clearOnly: false };
 let TEAM_COLORS = {};
 const MARKET_CHIPS = [
@@ -521,6 +522,8 @@ function matchingRows(scoped) {
   const book = state.book || { rows: [] };
   const q = state.q.trim().toLowerCase();
   return (book.rows || []).filter((row) => {
+    const day = String(row.start || "").slice(0, 10);
+    if (day && day < todayISO()) return false;
     if (!hasProjection(row)) return false;
     if (scoped && state.game && row.game !== state.game && row.sim_id !== state.game) return false;
     if (row.kind === "other" && row.source !== "onyx") return false;
@@ -612,6 +615,12 @@ function decorate(bet) {
   };
 }
 
+function todayISO() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
 function renderGames() {
   const games = (state.book && state.book.games) || [];
   const counts = {};
@@ -621,7 +630,12 @@ function renderGames() {
     counts[id] = (counts[id] || 0) + 1;
     total += 1;
   });
-  const shown = games.filter((g) => g.sim_away != null && ((counts[g.id] || counts[g.game] || 0) > 0 || state.game === (g.id || g.game)));
+  const shown = games.filter((g) => {
+    if (g.sim_away == null) return false;
+    const day = String(g.start || "").slice(0, 10);
+    if (day && day < todayISO()) return false;
+    return true;
+  });
   $("games").innerHTML = `<button class="game${state.game === "" ? " active" : ""}" data-game="">
       <span></span><div><b>All games</b><small>${state.clearOnly ? "Clear edges" : "Posted markets"}</small></div><span></span>
       <span class="count">${total}</span>
@@ -1068,26 +1082,31 @@ async function load() {
   state.book = await response.json();
   render();
 }
-$("refresh").onclick = async () => {
-  $("refresh").disabled = true;
-  $("refresh").textContent = "Refreshing…";
-  $("status").textContent = "Pulling PrizePicks, Kalshi, Polymarket, Underdog, Novig, Onyx, Pick6…";
-  try {
-    throw new Error("Live refresh runs on the local desk");
-    const body = await response.json();
-    state.book = body;
-    render();
-    const n = (body.rows || []).length;
-    $("status").textContent = body.error
-      ? body.error
-      : `${n} prices · ${body.matched_games || 0} games`;
-  } catch (err) {
-    $("status").textContent = "Refresh failed. The last board is still up.";
-  } finally {
-    $("refresh").disabled = false;
-    $("refresh").textContent = "Refresh odds";
-  }
-};
+if (CBB_STATIC) {
+  const refresh = $("refresh");
+  if (refresh) refresh.remove();
+} else if ($("refresh")) {
+  $("refresh").onclick = async () => {
+    $("refresh").disabled = true;
+    $("refresh").textContent = "Refreshing…";
+    $("status").textContent = "Pulling PrizePicks, Kalshi, Polymarket, Underdog, Novig, Onyx, Pick6…";
+    try {
+      throw new Error("Live refresh runs on the local desk");
+      const body = await response.json();
+      state.book = body;
+      render();
+      const n = (body.rows || []).length;
+      $("status").textContent = body.error
+        ? body.error
+        : `${n} prices · ${body.matched_games || 0} games`;
+    } catch (err) {
+      $("status").textContent = "Refresh failed. The last board is still up.";
+    } finally {
+      $("refresh").disabled = false;
+      $("refresh").textContent = "Refresh odds";
+    }
+  };
+}
 load();
 </script>
 </body>
