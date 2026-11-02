@@ -982,6 +982,26 @@ function titleOf(bet) {
   };
 }
 
+function defaultStd(mean) {
+  return Math.max(2.0, 1.7 + 0.95 * Math.sqrt(Math.abs(Number(mean) || 0)));
+}
+function normalCdf(x, mean, std) {
+  const z = (Number(x) - Number(mean)) / (Number(std) * Math.SQRT2);
+  const t = 1 / (1 + 0.3275911 * Math.abs(z));
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429;
+  const erf = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-z * z);
+  return 0.5 * (1 + (z < 0 ? -erf : erf));
+}
+function fairProbAtLine(mean, line, side, spread) {
+  if (mean == null || line == null || !Number.isFinite(Number(mean)) || !Number.isFinite(Number(line))) return null;
+  const std = defaultStd(mean);
+  let p;
+  if (spread) p = 1 - normalCdf(-Number(line), mean, std);
+  else if (side === "under") p = normalCdf(Number(line), mean, std);
+  else p = 1 - normalCdf(Number(line), mean, std);
+  if (!Number.isFinite(p)) return null;
+  return Math.min(Math.max(p, 0.01), 0.99);
+}
 function flatBet(bet) {
   const win = winningSide(bet);
   const quote = win.quote || bet.pick || {};
@@ -992,23 +1012,23 @@ function flatBet(bet) {
     ? (covers ? "cover" : "no cover")
     : (win.side || sideOf(quote) || bet.side || "");
   const ev = quote.ev != null ? quote.ev : bet.ev;
-  const modelNum = bet.mean != null ? Number(bet.mean) : null;
-  const labsNum = bet.labs != null ? Number(bet.labs) : null;
   const lineNum = bet.line != null ? Number(bet.line) : (quote.line != null ? Number(quote.line) : null);
-  const modelTxt = modelNum == null
-    ? (quote.model_prob != null ? (100 * quote.model_prob).toFixed(0) + "%" : "—")
-    : (spread ? signedLine(modelNum) : Number(modelNum).toFixed(1));
-  const labsTxt = labsNum == null ? "—" : (spread ? signedLine(labsNum) : Number(labsNum).toFixed(1));
-  const lineTxtVal = lineNum == null
+  const postedLine = spread && quote.line != null ? Number(quote.line) : lineNum;
+  const lineTxtVal = postedLine == null
     ? "—"
-    : (spread ? signedLine(quote.line != null ? quote.line : lineNum) : lineTxt(lineNum));
-  const price = quote.book;
-  const prob = quote.model_prob != null
+    : (spread ? signedLine(postedLine) : lineTxt(postedLine));
+  let modelProb = quote.model_prob != null
     ? quote.model_prob
-    : (spread
-      ? (bet.overProb != null ? bet.overProb : null)
-      : (side === "under" && bet.overProb != null ? 1 - bet.overProb : bet.overProb));
-  const qk = (prob != null && price != null) ? quarterKelly(prob, price) : null;
+    : fairProbAtLine(bet.mean, postedLine, side, spread);
+  if (modelProb != null && spread && side === "no cover" && quote.model_prob == null) {
+    modelProb = 1 - modelProb;
+  }
+  let labsProb = fairProbAtLine(bet.labs, postedLine, side, spread);
+  if (labsProb != null && spread && side === "no cover") labsProb = 1 - labsProb;
+  const modelPrice = modelProb != null ? (quote.model_odds != null ? quote.model_odds : americanFromProb(modelProb)) : null;
+  const labsPrice = labsProb != null ? americanFromProb(labsProb) : null;
+  const bookPrice = quote.book;
+  const qk = (modelProb != null && bookPrice != null) ? quarterKelly(modelProb, bookPrice) : null;
   return {
     bet,
     clear: Boolean(quote.clear || (bet.quotes || []).some((row) => row.clear)),
@@ -1018,16 +1038,12 @@ function flatBet(bet) {
     icon: title.icon || "",
     side,
     sideTxt: side ? String(side).replace(/_/g, " ") : "—",
-    line: lineNum,
+    line: postedLine,
     lineTxt: lineTxtVal,
-    model: modelNum,
-    modelTxt,
-    labs: labsNum,
-    labsTxt,
-    book: quote.source || "",
-    bookTxt: quote.source ? bookMark(quote.source) : "—",
-    odds: price,
-    oddsTxt: odds(price),
+    model: modelProb,
+    modelTxt: odds(modelPrice),
+    labs: labsProb,
+    labsTxt: odds(labsPrice),
     ev,
     evTxt: pct(ev),
     qk,
@@ -1044,8 +1060,6 @@ const SORT_COLS = [
   ["line", "Line"],
   ["model", "Model"],
   ["labs", "CBB Labs"],
-  ["book", "Book"],
-  ["odds", "Odds"],
   ["ev", "EV"],
   ["qk", "QK"],
 ];
@@ -1054,8 +1068,7 @@ function sortValue(row, key) {
   if (key === "game") return String(row.game || "").toLowerCase();
   if (key === "name") return `${row.name} ${row.market}`.toLowerCase();
   if (key === "side") return String(row.side || "").toLowerCase();
-  if (key === "book") return String(row.book || "").toLowerCase();
-  if (key === "line" || key === "model" || key === "labs" || key === "ev" || key === "qk" || key === "odds") {
+  if (key === "line" || key === "model" || key === "labs" || key === "ev" || key === "qk") {
     const n = Number(row[key]);
     return Number.isFinite(n) ? n : (state.sortDir === "asc" ? Infinity : -Infinity);
   }
@@ -1079,7 +1092,7 @@ function sortedRows(list) {
 function sortHeader(key, label) {
   const active = state.sortKey === key;
   const arrow = !active ? "" : (state.sortDir === "asc" ? "▲" : "▼");
-  return `<th class="${key === "game" || key === "name" || key === "book" ? "left " : ""}${active ? "active" : ""}" data-sort="${key}">${label}<span class="arrow">${arrow}</span></th>`;
+  return `<th class="${key === "game" || key === "name" ? "left " : ""}${active ? "active" : ""}" data-sort="${key}">${label}<span class="arrow">${arrow}</span></th>`;
 }
 
 function tableFor(list) {
@@ -1097,8 +1110,6 @@ function tableFor(list) {
         <td>${row.lineTxt}</td>
         <td>${row.modelTxt}</td>
         <td>${row.labsTxt}</td>
-        <td class="left">${row.bookTxt}</td>
-        <td>${row.oddsTxt}</td>
         <td class="${evClass}">${row.evTxt}</td>
         <td>${row.qkTxt}</td>
       </tr>`;
@@ -1127,7 +1138,7 @@ function render() {
       if (state.sortKey === key) state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
       else {
         state.sortKey = key;
-        state.sortDir = (key === "game" || key === "name" || key === "side" || key === "book") ? "asc" : "desc";
+        state.sortDir = (key === "game" || key === "name" || key === "side") ? "asc" : "desc";
       }
       render();
     };
