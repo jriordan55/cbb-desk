@@ -318,6 +318,7 @@ const VIEW_CHIPS = [
   ["posted", "All posted"],
   ["clear", "Clear edges"],
 ];
+// Clear edges = model + CBB Labs agree on the side, and model EV/edge >= 20%.
 const BOOKS = {
   prizepicks: { name: "PrizePicks", src: "static/books/prizepicks.png" },
   kalshi: { name: "Kalshi", src: "static/books/kalshi.png" },
@@ -639,7 +640,7 @@ function renderGames() {
     return true;
   });
   $("games").innerHTML = `<button class="game${state.game === "" ? " active" : ""}" data-game="">
-      <span></span><div><b>All games</b><small>${state.clearOnly ? "Clear edges" : "Posted markets"}</small></div><span></span>
+      <span></span><div><b>All games</b><small>${state.clearOnly ? "Labs agree · 20%+ edge" : "Posted markets"}</small></div><span></span>
       <span class="count">${total}</span>
     </button>` + shown.map((g) => {
     const id = g.id || g.game;
