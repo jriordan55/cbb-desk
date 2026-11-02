@@ -109,21 +109,17 @@
   }
   .game:hover { background: #f7f9fb; }
   .game.active { background: #eef3fb; box-shadow: inset 3px 0 0 var(--navy); }
-  .game img, .logo, .face, .pcard img, td img, .who img {
-    width: 28px;
-    height: 28px;
-    max-width: 28px;
-    max-height: 28px;
+  .game img, .logo, .face, td img {
+    width: 24px;
+    height: 24px;
+    max-width: 24px;
+    max-height: 24px;
     object-fit: contain;
   }
-  .face, .pcard img {
+  .face {
     border-radius: 50%;
     object-fit: cover;
     background: #e8ecf2;
-    width: 36px;
-    height: 36px;
-    max-width: 36px;
-    max-height: 36px;
   }
   .game small { display: block; color: var(--muted); font-size: 11px; }
   .count {
@@ -135,7 +131,7 @@
     font-size: 11px;
     padding: 2px 6px;
   }
-  main { padding: 16px 18px 32px; min-width: 0; }
+  main { padding: 12px 14px 28px; min-width: 0; overflow: auto; }
   .scoreboard {
     display: flex;
     align-items: center;
@@ -143,82 +139,24 @@
     gap: 14px;
     background: var(--card);
     border: 1px solid var(--line);
-    padding: 14px 16px;
-    margin-bottom: 14px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
     flex-wrap: wrap;
   }
-  .team { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 800; letter-spacing: 0.03em; }
-  .team img { width: 44px; height: 44px; max-width: 44px; max-height: 44px; }
+  .team { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 800; letter-spacing: 0.03em; }
+  .team img { width: 36px; height: 36px; max-width: 36px; max-height: 36px; }
   .mid { text-align: center; color: var(--muted); min-width: 90px; }
-  .mid b { display: block; color: var(--navy); font-size: 24px; letter-spacing: 0.04em; }
+  .mid b { display: block; color: var(--navy); font-size: 20px; letter-spacing: 0.04em; }
   .empty { padding: 48px 20px; text-align: center; color: var(--muted); }
-  .players { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-  .pcard {
-    display: flex; gap: 10px; align-items: center;
-    border: 1px solid var(--line); padding: 10px; background: #fff; cursor: pointer; text-align: left; font: inherit;
-  }
-  .pcard.active { border-color: var(--navy); }
-  .pcard div { min-width: 0; }
-  .pcard b, .pcard span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .stack { display: flex; flex-direction: column; gap: 14px; max-width: 860px; }
-  .bet {
-    background: var(--card);
-    border: 1px solid var(--line);
-    padding: 18px 22px 12px;
-  }
-  .bet-top {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .who b { display: block; font-size: 18px; letter-spacing: 0.01em; }
-  .who span { color: var(--muted); font-size: 12px; }
-  .meta {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    color: var(--muted);
-    font-size: 13px;
-    flex-shrink: 0;
-  }
   .ev { color: var(--up); font-weight: 700; font-variant-numeric: tabular-nums; }
-  .hero {
-    display: flex;
-    gap: 48px;
-    align-items: baseline;
-    margin: 18px 0 14px;
-    flex-wrap: wrap;
-  }
-  .hero .pair { display: flex; align-items: baseline; gap: 10px; }
-  .hero .lbl {
-    font-size: 11px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-weight: 700;
-  }
-  .hero .val {
-    font-size: 28px;
-    font-weight: 650;
-    letter-spacing: 0.02em;
-    font-variant-numeric: tabular-nums;
-  }
-  .best {
-    color: var(--muted);
-    font-size: 13px;
-    line-height: 1.6;
-    margin-bottom: 8px;
-  }
-  .best b { color: var(--ink); font-weight: 650; }
+  .ev.neg { color: var(--down); }
   .book-logo {
-    width: 18px;
-    height: 18px;
-    max-width: 18px;
-    max-height: 18px;
+    width: 16px;
+    height: 16px;
+    max-width: 16px;
+    max-height: 16px;
     object-fit: contain;
-    border-radius: 4px;
+    border-radius: 3px;
     vertical-align: middle;
   }
   .book-inline {
@@ -228,57 +166,58 @@
     color: var(--ink);
     font-weight: 650;
   }
-  .chart { width: 100%; height: 132px; display: block; margin: 6px 0 2px; }
-  .caption { color: var(--muted); font-size: 12px; margin: 2px 0 14px; }
-  .books { width: 100%; border-collapse: collapse; }
-  .books th {
+  .board-wrap {
+    background: var(--card);
+    border: 1px solid var(--line);
+    overflow: auto;
+    max-height: calc(100vh - 140px);
+  }
+  .board {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 1100px;
+  }
+  .board th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
     text-align: right;
     font-size: 10px;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--muted);
     font-weight: 700;
     padding: 10px 8px;
     border-bottom: 1px solid var(--line);
-    background: #f7f8fa;
+    background: #f3f5f8;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
   }
-  .books th.left, .books td.left { text-align: left; }
-  .books td {
-    padding: 10px 8px;
+  .board th.left, .board td.left { text-align: left; }
+  .board th:hover { color: var(--navy); }
+  .board th.active { color: var(--navy); }
+  .board th .arrow { margin-left: 4px; opacity: 0.75; }
+  .board td {
+    padding: 8px;
     text-align: right;
     border-bottom: 1px solid #eef1f4;
     font-variant-numeric: tabular-nums;
     vertical-align: middle;
+    white-space: nowrap;
   }
-  .books .name { display: inline-flex; align-items: center; gap: 8px; font-weight: 650; }
-  .books .pair { display: inline-flex; gap: 10px; justify-content: flex-end; }
-  .books .pair span:first-child { color: var(--muted); }
-  .books tr.model td { font-weight: 700; color: var(--navy); background: #f4f6fb; }
-  .books tr.best td { background: var(--up-bg); }
-  .flag {
-    display: inline-block;
-    margin-left: 8px;
-    padding: 1px 6px;
-    background: var(--up);
-    color: #fff;
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-weight: 700;
-  }
-  .group-label {
-    padding: 4px 2px 0;
-    font-weight: 800;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    font-size: 11px;
-    color: var(--navy);
-  }
+  .board td.left { white-space: normal; }
+  .board tr:hover td { background: #f7f9fb; }
+  .board tr.clear td { background: #f3faf5; }
+  .board tr.clear:hover td { background: #eaf6ee; }
+  .cell-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .cell-main b { display: block; font-size: 13px; }
+  .cell-main span { display: block; color: var(--muted); font-size: 11px; }
+  .muted { color: var(--muted); }
   @media (max-width: 760px) {
     .layout { grid-template-columns: 1fr; }
-    aside { max-height: 220px; }
+    aside { max-height: 180px; }
     header { overflow-x: auto; }
-    .hero .val { font-size: 22px; }
   }
 </style>
 </head>
@@ -305,7 +244,10 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const CBB_STATIC = true;
-const state = { book: null, view: "edges", game: "", market: "all", player: "", q: "", clearOnly: false };
+const state = {
+  book: null, view: "edges", game: "", market: "all", player: "", q: "", clearOnly: false,
+  sortKey: "ev", sortDir: "desc",
+};
 let TEAM_COLORS = {};
 const MARKET_CHIPS = [
   ["all", "All"],
@@ -1040,47 +982,128 @@ function titleOf(bet) {
   };
 }
 
-function card(bet) {
-  const title = titleOf(bet);
+function flatBet(bet) {
   const win = winningSide(bet);
+  const quote = win.quote || bet.pick || {};
   const spread = isSpread(bet);
+  const title = titleOf(bet);
   const covers = spread && bet.mean != null && bet.line != null && (Number(bet.mean) + Number(bet.line) > 0);
   const side = spread
-    ? (covers ? "COVER" : "NO COVER")
-    : (win.side || bet.side || "over").toUpperCase();
-  const ev = win.quote && win.quote.ev != null ? win.quote.ev : bet.ev;
-  const value = ev != null && ev > 0;
-  const lineLbl = bet.line != null
-    ? (value ? side + " VALUE" : side)
-    : (bet.pick.kind === "ml" ? "Price" : side);
-  const modelVal = spread && bet.mean != null
-    ? signedLine(bet.mean)
-    : (bet.mean != null ? Number(bet.mean).toFixed(1) : (bet.pick.model_prob != null ? (100 * bet.pick.model_prob).toFixed(0) + "%" : "—"));
-  const labsVal = bet.labs == null ? "" : (spread ? signedLine(bet.labs) : Number(bet.labs).toFixed(1));
-  const showModel = !isAlt(bet) || bet.pick.kind === "prop" || bet.pick.kind === "total" || bet.pick.kind === "spread";
-  const bookVal = bet.line != null
-    ? (spread ? signedLine(bet.line) : lineTxt(bet.line))
-    : odds((win.quote && win.quote.book) || bet.pick.book);
-  return `<article class="bet">
-    <div class="bet-top">
-      <div class="who">${title.icon}<div><b>${title.name}</b><span>${title.sub}</span></div></div>
-      <div class="meta"><span>${title.tag}</span><span class="ev">${pct(ev)}</span></div>
-    </div>
-    <div class="hero">
-      ${showModel ? `<div class="pair"><span class="lbl">Model</span><span class="val">${modelVal}</span></div>` : ""}
-      ${labsVal ? `<div class="pair"><span class="lbl">CBB Labs</span><span class="val">${labsVal}</span></div>` : ""}
-      <div class="pair"><span class="lbl">${lineLbl}</span><span class="val">${bookVal}</span></div>
-    </div>
-    ${bestLine(bet)}
-    ${density(bet)}
-    ${caption(bet)}
-    ${bookTable(bet)}
-  </article>`;
+    ? (covers ? "cover" : "no cover")
+    : (win.side || sideOf(quote) || bet.side || "");
+  const ev = quote.ev != null ? quote.ev : bet.ev;
+  const modelNum = bet.mean != null ? Number(bet.mean) : null;
+  const labsNum = bet.labs != null ? Number(bet.labs) : null;
+  const lineNum = bet.line != null ? Number(bet.line) : (quote.line != null ? Number(quote.line) : null);
+  const modelTxt = modelNum == null
+    ? (quote.model_prob != null ? (100 * quote.model_prob).toFixed(0) + "%" : "—")
+    : (spread ? signedLine(modelNum) : Number(modelNum).toFixed(1));
+  const labsTxt = labsNum == null ? "—" : (spread ? signedLine(labsNum) : Number(labsNum).toFixed(1));
+  const lineTxtVal = lineNum == null
+    ? "—"
+    : (spread ? signedLine(quote.line != null ? quote.line : lineNum) : lineTxt(lineNum));
+  const price = quote.book;
+  const prob = quote.model_prob != null
+    ? quote.model_prob
+    : (spread
+      ? (bet.overProb != null ? bet.overProb : null)
+      : (side === "under" && bet.overProb != null ? 1 - bet.overProb : bet.overProb));
+  const qk = (prob != null && price != null) ? quarterKelly(prob, price) : null;
+  return {
+    bet,
+    clear: Boolean(quote.clear || (bet.quotes || []).some((row) => row.clear)),
+    game: quote.game || title.sub.split(" · ").slice(-1)[0] || "",
+    market: title.tag || "",
+    name: title.name || "",
+    icon: title.icon || "",
+    side,
+    sideTxt: side ? String(side).replace(/_/g, " ") : "—",
+    line: lineNum,
+    lineTxt: lineTxtVal,
+    model: modelNum,
+    modelTxt,
+    labs: labsNum,
+    labsTxt,
+    book: quote.source || "",
+    bookTxt: quote.source ? bookMark(quote.source) : "—",
+    odds: price,
+    oddsTxt: odds(price),
+    ev,
+    evTxt: pct(ev),
+    qk,
+    qkTxt: qk == null ? "—" : (qk < 1 ? "<$1" : "$" + Math.round(qk)),
+    start: quote.start || "",
+    kind: quote.kind || "",
+  };
+}
+
+const SORT_COLS = [
+  ["game", "Game"],
+  ["name", "Market"],
+  ["side", "Side"],
+  ["line", "Line"],
+  ["model", "Model"],
+  ["labs", "CBB Labs"],
+  ["book", "Book"],
+  ["odds", "Odds"],
+  ["ev", "EV"],
+  ["qk", "QK"],
+];
+
+function sortValue(row, key) {
+  if (key === "game") return String(row.game || "").toLowerCase();
+  if (key === "name") return `${row.name} ${row.market}`.toLowerCase();
+  if (key === "side") return String(row.side || "").toLowerCase();
+  if (key === "book") return String(row.book || "").toLowerCase();
+  if (key === "line" || key === "model" || key === "labs" || key === "ev" || key === "qk" || key === "odds") {
+    const n = Number(row[key]);
+    return Number.isFinite(n) ? n : (state.sortDir === "asc" ? Infinity : -Infinity);
+  }
+  return "";
+}
+
+function sortedRows(list) {
+  const rows = list.map(flatBet);
+  const key = state.sortKey || "ev";
+  const dir = state.sortDir === "asc" ? 1 : -1;
+  rows.sort((a, b) => {
+    const av = sortValue(a, key);
+    const bv = sortValue(b, key);
+    if (av < bv) return -1 * dir;
+    if (av > bv) return 1 * dir;
+    return (b.ev ?? -9) - (a.ev ?? -9);
+  });
+  return rows;
+}
+
+function sortHeader(key, label) {
+  const active = state.sortKey === key;
+  const arrow = !active ? "" : (state.sortDir === "asc" ? "▲" : "▼");
+  return `<th class="${key === "game" || key === "name" || key === "book" ? "left " : ""}${active ? "active" : ""}" data-sort="${key}">${label}<span class="arrow">${arrow}</span></th>`;
 }
 
 function tableFor(list) {
   if (!list.length) return `<div class="empty">No posted markets in this view.</div>`;
-  return `<div class="stack">${list.map(card).join("")}</div>`;
+  const rows = sortedRows(list);
+  return `<div class="board-wrap"><table class="board"><thead><tr>
+    ${SORT_COLS.map(([key, label]) => sortHeader(key, label)).join("")}
+  </tr></thead><tbody>
+    ${rows.map((row) => {
+      const evClass = row.ev == null ? "muted" : (row.ev > 0 ? "ev" : "ev neg");
+      return `<tr class="${row.clear ? "clear" : ""}">
+        <td class="left">${row.game || "—"}</td>
+        <td class="left"><div class="cell-main">${row.icon}<div><b>${row.name}</b><span>${row.market}${row.bet.pick && row.bet.pick.alt ? " · Alt" : ""}</span></div></div></td>
+        <td>${row.sideTxt}</td>
+        <td>${row.lineTxt}</td>
+        <td>${row.modelTxt}</td>
+        <td>${row.labsTxt}</td>
+        <td class="left">${row.bookTxt}</td>
+        <td>${row.oddsTxt}</td>
+        <td class="${evClass}">${row.evTxt}</td>
+        <td>${row.qkTxt}</td>
+      </tr>`;
+    }).join("")}
+  </tbody></table></div>`;
 }
 
 function render() {
@@ -1098,6 +1121,17 @@ function render() {
   renderGames();
   $("board").innerHTML = selected ? scoreboard(selected) : "";
   $("table").innerHTML = tableFor(list);
+  $("table").querySelectorAll("th[data-sort]").forEach((th) => {
+    th.onclick = () => {
+      const key = th.dataset.sort;
+      if (state.sortKey === key) state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+      else {
+        state.sortKey = key;
+        state.sortDir = (key === "game" || key === "name" || key === "side" || key === "book") ? "asc" : "desc";
+      }
+      render();
+    };
+  });
 }
 document.body.addEventListener("click", (ev) => {
   const chip = ev.target.closest(".chip");
