@@ -861,8 +861,10 @@ function showBest(bet) {
 }
 
 function labsRow(bet, twoSided) {
-  if (bet.labs == null || !(bet.pick && bet.pick.kind === "prop")) return "";
-  const val = Number(bet.labs).toFixed(1);
+  if (bet.labs == null) return "";
+  const kind = bet.pick && bet.pick.kind;
+  if (kind !== "prop" && kind !== "total" && kind !== "spread") return "";
+  const val = isSpread(bet) ? signedLine(bet.labs) : Number(bet.labs).toFixed(1);
   if (twoSided) {
     return `<tr class="model">
       <td class="left"><span class="name">CBB Labs</span></td>
@@ -913,6 +915,18 @@ function spreadModelCell(line, prob) {
   if (prob == null) return "—";
   return `<span class="pair"><span>${signedLine(line)}</span>${priceCell(prob, americanFromProb(prob))}</span>`;
 }
+function spreadLabsRow(bet) {
+  if (bet.labs == null) return "";
+  const seat = spreadSeat(bet.pick);
+  const awayMargin = seat === "away" ? Number(bet.labs) : -Number(bet.labs);
+  const homeMargin = -awayMargin;
+  return `<tr class="model">
+    <td class="left"><span class="name">CBB Labs</span></td>
+    <td>${signedLine(awayMargin)}</td>
+    <td>${signedLine(homeMargin)}</td>
+    <td>—</td>
+  </tr>`;
+}
 function spreadModelRow(bet) {
   const awayQ = (bet.quotes || []).find((row) => spreadSeat(row) === "away" && row.model_prob != null);
   const homeQ = (bet.quotes || []).find((row) => spreadSeat(row) === "home" && row.model_prob != null);
@@ -920,13 +934,13 @@ function spreadModelRow(bet) {
   const homeP = homeQ ? homeQ.model_prob : (awayQ && awayQ.model_prob != null ? 1 - awayQ.model_prob : null);
   const awayLine = awayQ && awayQ.line != null ? awayQ.line : (bet.line != null && spreadSeat(bet.pick) === "away" ? bet.line : (bet.line != null ? -Number(bet.line) : null));
   const homeLine = homeQ && homeQ.line != null ? homeQ.line : (bet.line != null && spreadSeat(bet.pick) === "home" ? bet.line : (bet.line != null ? -Number(bet.line) : null));
-  if (awayP == null && homeP == null) return "";
+  if (awayP == null && homeP == null) return spreadLabsRow(bet);
   return `<tr class="model">
     <td class="left"><span class="name">Model</span></td>
     <td>${spreadModelCell(awayLine, awayP)}</td>
     <td>${spreadModelCell(homeLine, homeP)}</td>
     <td>—</td>
-  </tr>`;
+  </tr>${spreadLabsRow(bet)}`;
 }
 function bookTable(bet) {
   if (isSpread(bet)) {
@@ -1047,8 +1061,8 @@ function card(bet) {
   const modelVal = spread && bet.mean != null
     ? signedLine(bet.mean)
     : (bet.mean != null ? Number(bet.mean).toFixed(1) : (bet.pick.model_prob != null ? (100 * bet.pick.model_prob).toFixed(0) + "%" : "—"));
-  const labsVal = bet.labs != null ? Number(bet.labs).toFixed(1) : "";
-  const showModel = !isAlt(bet) || bet.pick.kind === "prop";
+  const labsVal = bet.labs == null ? "" : (spread ? signedLine(bet.labs) : Number(bet.labs).toFixed(1));
+  const showModel = !isAlt(bet) || bet.pick.kind === "prop" || bet.pick.kind === "total" || bet.pick.kind === "spread";
   const bookVal = bet.line != null
     ? (spread ? signedLine(bet.line) : lineTxt(bet.line))
     : odds((win.quote && win.quote.book) || bet.pick.book);
