@@ -568,6 +568,7 @@ function decorate(bet) {
   const over = bestQuote(quotes, (row) => sideOf(row) === "over");
   const under = bestQuote(quotes, (row) => sideOf(row) === "under");
   const mean = pick && pick.model_mean != null ? pick.model_mean : quotes.map((row) => row.model_mean).find((v) => v != null);
+  const labs = pick && pick.labs_mean != null ? pick.labs_mean : quotes.map((row) => row.labs_mean).find((v) => v != null);
   const std = pick && pick.model_std != null && pick.model_std > 0
     ? pick.model_std
     : quotes.map((row) => row.model_std).find((v) => v != null && v > 0);
@@ -606,6 +607,7 @@ function decorate(bet) {
     over,
     under,
     mean,
+    labs,
     std,
     overProb,
     line,
@@ -858,19 +860,41 @@ function showBest(bet) {
   return pricedBooks(bet) > 1;
 }
 
+function labsRow(bet, twoSided) {
+  if (bet.labs == null || !(bet.pick && bet.pick.kind === "prop")) return "";
+  const val = Number(bet.labs).toFixed(1);
+  if (twoSided) {
+    return `<tr class="model">
+      <td class="left"><span class="name">CBB Labs</span></td>
+      <td>${val}</td>
+      <td>—</td>
+      <td>—</td>
+      <td>—</td>
+    </tr>`;
+  }
+  const ml = isMoneyline(bet);
+  return `<tr class="model">
+    <td class="left"><span class="name">CBB Labs</span></td>
+    ${ml ? "" : `<td>${val}</td>`}
+    <td>—</td>
+    <td>—</td>
+    <td>—</td>
+  </tr>`;
+}
+
 function modelRow(bet, twoSided) {
   const p = sideProbs(bet);
   if (twoSided) {
-    if (p.modelOver == null && p.modelUnder == null) return "";
+    if (p.modelOver == null && p.modelUnder == null) return labsRow(bet, true);
     return `<tr class="model">
       <td class="left"><span class="name">Model</span></td>
       <td>${modelLineCell(bet)}</td>
       <td>${priceCell(p.modelOver, p.modelOverOdds)}</td>
       <td>${priceCell(p.modelUnder, p.modelUnderOdds)}</td>
       <td>—</td>
-    </tr>`;
+    </tr>${labsRow(bet, true)}`;
   }
-  if (p.modelSide == null) return "";
+  if (p.modelSide == null) return labsRow(bet, false);
   const line = isMoneyline(bet) ? "" : `<td>${modelLineCell(bet)}</td>`;
   return `<tr class="model">
     <td class="left"><span class="name">Model</span></td>
@@ -878,7 +902,7 @@ function modelRow(bet, twoSided) {
     <td>${fairPct(p.modelSide)}</td>
     <td>${odds(p.modelSideOdds)}</td>
     <td>—</td>
-  </tr>`;
+  </tr>${labsRow(bet, false)}`;
 }
 
 function spreadCell(row) {
@@ -1023,6 +1047,8 @@ function card(bet) {
   const modelVal = spread && bet.mean != null
     ? signedLine(bet.mean)
     : (bet.mean != null ? Number(bet.mean).toFixed(1) : (bet.pick.model_prob != null ? (100 * bet.pick.model_prob).toFixed(0) + "%" : "—"));
+  const labsVal = bet.labs != null ? Number(bet.labs).toFixed(1) : "";
+  const showModel = !isAlt(bet) || bet.pick.kind === "prop";
   const bookVal = bet.line != null
     ? (spread ? signedLine(bet.line) : lineTxt(bet.line))
     : odds((win.quote && win.quote.book) || bet.pick.book);
@@ -1032,7 +1058,8 @@ function card(bet) {
       <div class="meta"><span>${title.tag}</span><span class="ev">${pct(ev)}</span></div>
     </div>
     <div class="hero">
-      ${isAlt(bet) ? "" : `<div class="pair"><span class="lbl">Model</span><span class="val">${modelVal}</span></div>`}
+      ${showModel ? `<div class="pair"><span class="lbl">Model</span><span class="val">${modelVal}</span></div>` : ""}
+      ${labsVal ? `<div class="pair"><span class="lbl">CBB Labs</span><span class="val">${labsVal}</span></div>` : ""}
       <div class="pair"><span class="lbl">${lineLbl}</span><span class="val">${bookVal}</span></div>
     </div>
     ${bestLine(bet)}
