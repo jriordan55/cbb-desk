@@ -1045,6 +1045,10 @@ function flatBet(bet) {
     modelTxt: odds(modelPrice),
     labs: labsProb,
     labsTxt: odds(labsPrice),
+    book: quote.source || "",
+    bookTxt: quote.source ? bookMark(quote.source) : "—",
+    odds: bookPrice,
+    oddsTxt: odds(bookPrice),
     ev,
     evTxt: pct(ev),
     qk,
@@ -1061,6 +1065,8 @@ const SORT_COLS = [
   ["line", "Line"],
   ["model", "Model"],
   ["labs", "CBB Labs"],
+  ["book", "Book"],
+  ["odds", "Odds"],
   ["ev", "EV"],
   ["qk", "QK"],
 ];
@@ -1069,7 +1075,8 @@ function sortValue(row, key) {
   if (key === "game") return String(row.game || "").toLowerCase();
   if (key === "name") return `${row.name} ${row.market}`.toLowerCase();
   if (key === "side") return String(row.side || "").toLowerCase();
-  if (key === "line" || key === "model" || key === "labs" || key === "ev" || key === "qk") {
+  if (key === "book") return String(row.book || "").toLowerCase();
+  if (key === "line" || key === "model" || key === "labs" || key === "odds" || key === "ev" || key === "qk") {
     const n = Number(row[key]);
     return Number.isFinite(n) ? n : (state.sortDir === "asc" ? Infinity : -Infinity);
   }
@@ -1111,6 +1118,8 @@ function tableFor(list) {
         <td>${row.lineTxt}</td>
         <td>${row.modelTxt}</td>
         <td>${row.labsTxt}</td>
+        <td class="left">${row.bookTxt}</td>
+        <td>${row.oddsTxt}</td>
         <td class="${evClass}">${row.evTxt}</td>
         <td>${row.qkTxt}</td>
       </tr>`;
