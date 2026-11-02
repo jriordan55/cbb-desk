@@ -1023,7 +1023,8 @@ function flatBet(bet) {
   if (modelProb != null && spread && side === "no cover" && quote.model_prob == null) {
     modelProb = 1 - modelProb;
   }
-  let labsProb = fairProbAtLine(bet.labs, postedLine, side, spread);
+  const alt = isAlt(bet) || Boolean(quote.alt);
+  let labsProb = alt ? null : fairProbAtLine(bet.labs, postedLine, side, spread);
   if (labsProb != null && spread && side === "no cover") labsProb = 1 - labsProb;
   const modelPrice = modelProb != null ? (quote.model_odds != null ? quote.model_odds : americanFromProb(modelProb)) : null;
   const labsPrice = labsProb != null ? americanFromProb(labsProb) : null;
