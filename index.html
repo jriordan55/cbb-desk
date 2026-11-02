@@ -390,14 +390,30 @@ function americanFromProb(prob) {
 function priceCell(prob, price) {
   return `<span class="pair"><span>${fairPct(prob)}</span><span>${odds(price)}</span></span>`;
 }
-function holdPct(a, b) {
-  if (a == null || b == null) return null;
-  const value = Number(a) + Number(b) - 1;
-  return Number.isFinite(value) ? value : null;
+const BANKROLL = 1000;
+const KELLY_FRAC = 0.25;
+function decimalOdds(price) {
+  const n = Number(price);
+  if (!Number.isFinite(n) || n === 0) return null;
+  return n > 0 ? 1 + n / 100 : 1 + 100 / (-n);
 }
-function holdTxt(value) {
-  if (value == null || !Number.isFinite(value)) return "—";
-  return (100 * value).toFixed(1) + "%";
+function quarterKelly(prob, price, bankroll = BANKROLL) {
+  const p = Number(prob);
+  const dec = decimalOdds(price);
+  if (!Number.isFinite(p) || p <= 0 || p >= 1 || dec == null || dec <= 1) return null;
+  const b = dec - 1;
+  const ev = p * dec - 1;
+  if (!(ev > 0) || !(b > 0)) return null;
+  const full = Math.min(ev / b, 1);
+  const stake = KELLY_FRAC * full * bankroll;
+  if (!Number.isFinite(stake) || stake <= 0) return null;
+  return stake;
+}
+function qkTxt(prob, price) {
+  const stake = quarterKelly(prob, price);
+  if (stake == null) return "—";
+  if (stake < 1) return "<$1";
+  return "$" + Math.round(stake);
 }
 function isMoneyline(bet) {
   return (bet.pick && bet.pick.kind) === "ml";
@@ -454,10 +470,24 @@ function oppositePrice(row) {
   });
   return match ? match.book : null;
 }
-function rowHold(row, peers) {
-  const other = (peers || []).find((item) => item.source === row.source && !sameQuote(item, row) && item.book != null);
-  const price = other ? other.book : oppositePrice(row);
-  return holdPct(implied(row.book), implied(price));
+function quoteQK(row) {
+  if (!row || row.book == null || row.model_prob == null) return "—";
+  return qkTxt(row.model_prob, row.book);
+}
+function twoSidedQK(bet, book) {
+  const p = sideProbs(bet);
+  const overStake = book.over != null && p.modelOver != null ? quarterKelly(p.modelOver, book.over) : null;
+  const underStake = book.under != null && p.modelUnder != null ? quarterKelly(p.modelUnder, book.under) : null;
+  if (overStake == null && underStake == null) return "—";
+  if (underStake == null || (overStake != null && overStake >= underStake)) return qkTxt(p.modelOver, book.over);
+  return qkTxt(p.modelUnder, book.under);
+}
+function spreadBookQK(book) {
+  const awayStake = book.away && book.away.model_prob != null ? quarterKelly(book.away.model_prob, book.away.book) : null;
+  const homeStake = book.home && book.home.model_prob != null ? quarterKelly(book.home.model_prob, book.home.book) : null;
+  if (awayStake == null && homeStake == null) return "—";
+  if (homeStake == null || (awayStake != null && awayStake >= homeStake)) return quoteQK(book.away);
+  return quoteQK(book.home);
 }
 function lineTxt(value) {
   if (value == null || value === "") return "";
@@ -914,7 +944,7 @@ function bookTable(bet) {
     const awayName = (bet.pick && bet.pick.away) || "Away";
     const homeName = (bet.pick && bet.pick.home) || "Home";
     const rows = bet.books.filter((b) => b.away || b.home);
-    return `<table class="books"><thead><tr><th class="left">Book</th><th>${awayName}</th><th>${homeName}</th><th>Hold</th></tr></thead><tbody>
+    return `<table class="books"><thead><tr><th class="left">Book</th><th>${awayName}</th><th>${homeName}</th><th>QK</th></tr></thead><tbody>
       ${spreadModelRow(bet)}
       ${rows.map((b) => {
         const bestAway = mark && win.quote && b.away && sameQuote(b.away, win.quote);
@@ -923,7 +953,7 @@ function bookTable(bet) {
           <td class="left"><span class="name">${bookMark(b.source)}</span></td>
           <td>${spreadCell(b.away)}${bestAway ? `<span class="flag">Best</span>` : ""}</td>
           <td>${spreadCell(b.home)}${bestHome ? `<span class="flag">Best</span>` : ""}</td>
-          <td>${holdTxt(holdPct(implied(b.away && b.away.book), implied(b.home && b.home.book)))}</td>
+          <td>${spreadBookQK(b)}</td>
         </tr>`;
       }).join("")}
     </tbody></table>`;
@@ -941,8 +971,8 @@ function bookTable(bet) {
     });
     const ml = isMoneyline(bet);
     const head = ml
-      ? `<th class="left">Book</th><th>Prob</th><th>Odds</th><th>Hold</th>`
-      : `<th class="left">Book</th><th>Line</th><th>Prob</th><th>Odds</th><th>Hold</th>`;
+      ? `<th class="left">Book</th><th>Prob</th><th>Odds</th><th>QK</th>`
+      : `<th class="left">Book</th><th>Line</th><th>Prob</th><th>Odds</th><th>QK</th>`;
     return `<table class="books"><thead><tr>${head}</tr></thead><tbody>
       ${modelRow(bet, false)}
       ${rows.map((row) => {
@@ -953,12 +983,12 @@ function bookTable(bet) {
         ${line}
         <td>${fairPct(implied(row.book))}</td>
         <td>${odds(row.book)}${isBest ? `<span class="flag">Best</span>` : ""}</td>
-        <td>${holdTxt(rowHold(row, rows))}</td>
+        <td>${quoteQK(row)}</td>
       </tr>`;
       }).join("")}
     </tbody></table>`;
   }
-  return `<table class="books"><thead><tr><th class="left">Book</th><th>Line</th><th>Over</th><th>Under</th><th>Hold</th></tr></thead><tbody>
+  return `<table class="books"><thead><tr><th class="left">Book</th><th>Line</th><th>Over</th><th>Under</th><th>QK</th></tr></thead><tbody>
     ${modelRow(bet, true)}
     ${bet.books.map((b) => {
       const bestOver = mark && win.side === "over" && win.quote && b.source === win.quote.source && b.over === win.quote.book;
@@ -968,7 +998,7 @@ function bookTable(bet) {
         <td>${lineTxt(b.line) || "—"}</td>
         <td>${priceCell(implied(b.over), b.over)}${bestOver ? `<span class="flag">Best</span>` : ""}</td>
         <td>${priceCell(implied(b.under), b.under)}${bestUnder ? `<span class="flag">Best</span>` : ""}</td>
-        <td>${holdTxt(holdPct(implied(b.over), implied(b.under)))}</td>
+        <td>${twoSidedQK(bet, b)}</td>
       </tr>`;
     }).join("")}
   </tbody></table>`;
