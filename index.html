@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CBB Trading Desk</title>
+<style>
+  :root {
+    --navy: #001a4d;
+    --navy-2: #0a2a6b;
+    --bg: #eef1f4;
+    --card: #ffffff;
+    --ink: #101318;
+    --muted: #6a7380;
+    --line: #d9dee6;
+    --up: #0b7a3b;
+    --up-bg: #e7f6ec;
+    --down: #b42318;
+    --chip: #f4f6f8;
+    --fill: #d7dee6;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 13px/1.4 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 0 18px;
+    height: 56px;
+    background: var(--navy);
+    color: #fff;
+    white-space: nowrap;
+  }
+  .brand b {
+    font-size: 15px;
+    letter-spacing: 0.12em;
+    font-weight: 800;
+  }
+  .ghost {
+    background: transparent;
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.35);
+    padding: 8px 12px;
+    font: inherit;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 11px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+  }
+  .ghost:hover { background: rgba(255,255,255,0.08); }
+  .actions { display: flex; gap: 8px; align-items: center; }
+  .status { color: rgba(255,255,255,0.72); font-size: 11px; max-width: 420px; white-space: normal; }
+  .toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 16px;
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  input {
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    padding: 7px 10px;
+    font: inherit;
+  }
+  #q { width: 220px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    border: 1px solid var(--line);
+    background: var(--chip);
+    color: var(--ink);
+    padding: 6px 10px;
+    font: inherit;
+    cursor: pointer;
+  }
+  .chip.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: calc(100% - 110px); }
+  aside {
+    background: var(--card);
+    border-right: 1px solid var(--line);
+    overflow: auto;
+  }
+  .game {
+    display: grid;
+    grid-template-columns: 28px 1fr 28px auto;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    padding: 10px 12px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+  }
+  .game:hover { background: #f7f9fb; }
+  .game.active { background: #eef3fb; box-shadow: inset 3px 0 0 var(--navy); }
+  .game img, .logo, .face, .pcard img, td img, .who img {
+    width: 28px;
+    height: 28px;
+    max-width: 28px;
+    max-height: 28px;
+    object-fit: contain;
+  }
+  .face, .pcard img {
+    border-radius: 50%;
+    object-fit: cover;
+    background: #e8ecf2;
+    width: 36px;
+    height: 36px;
+    max-width: 36px;
+    max-height: 36px;
+  }
+  .game small { display: block; color: var(--muted); font-size: 11px; }
+  .count {
+    min-width: 22px;
+    text-align: center;
+    background: var(--up-bg);
+    color: var(--up);
+    font-weight: 700;
+    font-size: 11px;
+    padding: 2px 6px;
+  }
+  main { padding: 16px 18px 32px; min-width: 0; }
+  .scoreboard {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .team { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 800; letter-spacing: 0.03em; }
+  .team img { width: 44px; height: 44px; max-width: 44px; max-height: 44px; }
+  .mid { text-align: center; color: var(--muted); min-width: 90px; }
+  .mid b { display: block; color: var(--navy); font-size: 24px; letter-spacing: 0.04em; }
+  .empty { padding: 48px 20px; text-align: center; color: var(--muted); }
+  .players { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .pcard {
+    display: flex; gap: 10px; align-items: center;
+    border: 1px solid var(--line); padding: 10px; background: #fff; cursor: pointer; text-align: left; font: inherit;
+  }
+  .pcard.active { border-color: var(--navy); }
+  .pcard div { min-width: 0; }
+  .pcard b, .pcard span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stack { display: flex; flex-direction: column; gap: 14px; max-width: 860px; }
+  .bet {
+    background: var(--card);
+    border: 1px solid var(--line);
+    padding: 18px 22px 12px;
+  }
+  .bet-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .who b { display: block; font-size: 18px; letter-spacing: 0.01em; }
+  .who span { color: var(--muted); font-size: 12px; }
+  .meta {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: var(--muted);
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .ev { color: var(--up); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .hero {
+    display: flex;
+    gap: 48px;
+    align-items: baseline;
+    margin: 18px 0 14px;
+    flex-wrap: wrap;
+  }
+  .hero .pair { display: flex; align-items: baseline; gap: 10px; }
+  .hero .lbl {
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 700;
+  }
+  .hero .val {
+    font-size: 28px;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .best {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
+  .best b { color: var(--ink); font-weight: 650; }
+  .book-logo {
+    width: 18px;
+    height: 18px;
+    max-width: 18px;
+    max-height: 18px;
+    object-fit: contain;
+    border-radius: 4px;
+    vertical-align: middle;
+  }
+  .book-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--ink);
+    font-weight: 650;
+  }
+  .chart { width: 100%; height: 132px; display: block; margin: 6px 0 2px; }
+  .caption { color: var(--muted); font-size: 12px; margin: 2px 0 14px; }
+  .books { width: 100%; border-collapse: collapse; }
+  .books th {
+    text-align: right;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 700;
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--line);
+    background: #f7f8fa;
+  }
+  .books th.left, .books td.left { text-align: left; }
+  .books td {
+    padding: 10px 8px;
+    text-align: right;
+    border-bottom: 1px solid #eef1f4;
+    font-variant-numeric: tabular-nums;
+    vertical-align: middle;
+  }
+  .books .name { display: inline-flex; align-items: center; gap: 8px; font-weight: 650; }
+  .books .pair { display: inline-flex; gap: 10px; justify-content: flex-end; }
+  .books .pair span:first-child { color: var(--muted); }
+  .books tr.model td { font-weight: 700; color: var(--navy); background: #f4f6fb; }
+  .books tr.best td { background: var(--up-bg); }
+  .flag {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 6px;
+    background: var(--up);
+    color: #fff;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .group-label {
+    padding: 4px 2px 0;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-size: 11px;
+    color: var(--navy);
+  }
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { max-height: 220px; }
+    header { overflow-x: auto; }
+    .hero .val { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><b>CBB TRADING DESK</b></div>
+  <div class="actions">
+    <span class="status" id="status"></span>
+    <button class="ghost" id="refresh" type="button">Refresh odds</button>
+  </div>
+</header>
+<div class="toolbar">
+  <input id="q" placeholder="Search team, player, market" />
+  <div class="chips" id="markets"></div>
+  <div class="chips" id="views"></div>
+</div>
+<div class="layout">
+  <aside id="games"></aside>
+  <main>
+    <div id="board"></div>
+    <div id="table"></div>
+  </main>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const state = { book: null, view: "edges", game: "", market: "all", player: "", q: "", clearOnly: false };
+let TEAM_COLORS = {};
+const MARKET_CHIPS = [
+  ["all", "All"],
+  ["ml", "ML"],
+  ["spread", "Spread"],
+  ["total", "Total"],
+  ["prop", "Players"],
+];
+const VIEW_CHIPS = [
+  ["posted", "All posted"],
+  ["clear", "Clear edges"],
+];
+const BOOKS = {
+  prizepicks: { name: "PrizePicks", src: "static/books/prizepicks.png" },
+  kalshi: { name: "Kalshi", src: "static/books/kalshi.png" },
+  underdog: { name: "Underdog", src: "static/books/underdog.png" },
+  onyx: { name: "Onyx", src: "static/books/onyx.png" },
+  polymarket: { name: "Polymarket", src: "static/books/polymarket.png" },
+  novig: { name: "Novig", src: "static/books/novig.png" },
+  pick6: { name: "Pick6", src: "static/books/pick6.svg?v=2" },
+};
+const MARKET_LABELS = {
+  pra: "Points + Rebounds + Assists",
+  "pts+rebs+asts": "Points + Rebounds + Assists",
+  "points rebounds assists": "Points + Rebounds + Assists",
+  points_rebounds: "Points + Rebounds",
+  "points rebounds": "Points + Rebounds",
+  "pts+rebs": "Points + Rebounds",
+  points_assists: "Points + Assists",
+  "points assists": "Points + Assists",
+  "pts+asts": "Points + Assists",
+  rebounds_assists: "Rebounds + Assists",
+  "rebounds assists": "Rebounds + Assists",
+  "rebs+asts": "Rebounds + Assists",
+  points: "Points",
+  rebounds: "Rebounds",
+  assists: "Assists",
+  threes: "Three-Pointers Made",
+  "3-pt made": "Three-Pointers Made",
+  "three pointers made": "Three-Pointers Made",
+  steals: "Steals",
+  blocks: "Blocked Shots",
+  "blocked shots": "Blocked Shots",
+  turnovers: "Turnovers",
+  double_double: "Double-Double",
+  ml: "Moneyline",
+  moneyline: "Moneyline",
+  spread: "Spread",
+  total: "Total",
+  "team total": "Team Total",
+  "1st half total": "1st Half Total",
+  "1st half moneyline": "1st Half Moneyline",
+  "1st half spread": "1st Half Spread",
+};
+
+function odds(value) {
+  if (value == null || value === "") return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return n > 0 ? "+" + Math.round(n) : String(Math.round(n));
+}
+function pct(value) {
+  if (value == null || value === "") return "—";
+  const n = 100 * Number(value);
+  return (n > 0 ? "+" : "") + n.toFixed(1) + "%";
+}
+function fairPct(value) {
+  if (value == null || value === "") return "—";
+  return (100 * Number(value)).toFixed(1) + "%";
+}
+function implied(price) {
+  const n = Number(price);
+  if (!Number.isFinite(n) || n === 0) return null;
+  return n < 0 ? (-n) / ((-n) + 100) : 100 / (n + 100);
+}
+function americanFromProb(prob) {
+  if (prob == null || prob <= 0 || prob >= 1) return null;
+  if (prob >= 0.5) return Math.round(-100 * prob / (1 - prob));
+  return Math.round(100 * (1 - prob) / prob);
+}
+function priceCell(prob, price) {
+  return `<span class="pair"><span>${fairPct(prob)}</span><span>${odds(price)}</span></span>`;
+}
+function holdPct(a, b) {
+  if (a == null || b == null) return null;
+  const value = Number(a) + Number(b) - 1;
+  return Number.isFinite(value) ? value : null;
+}
+function holdTxt(value) {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return (100 * value).toFixed(1) + "%";
+}
+function isMoneyline(bet) {
+  return (bet.pick && bet.pick.kind) === "ml";
+}
+function isSpread(bet) {
+  return (bet.pick && bet.pick.kind) === "spread";
+}
+function isAlt(bet) {
+  return Boolean((bet.pick && bet.pick.alt) || (bet.quotes || []).some((row) => row.alt));
+}
+function sanePrice(price, source) {
+  if (price == null || price === "") return false;
+  const n = Number(price);
+  if (!Number.isFinite(n) || n === 0) return false;
+  if (source === "onyx") return true;
+  return Math.abs(n) <= 2500;
+}
+function signedLine(value) {
+  if (value == null || value === "") return "";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "";
+  const body = Number.isInteger(n) ? String(Math.abs(n)) : Math.abs(n).toFixed(1);
+  if (n > 0) return "+" + body;
+  if (n < 0) return "-" + body;
+  return body;
+}
+function teamName(row) {
+  return String((row && row.selection) || "").replace(/\s*[+-]?\d+(?:\.\d+)?\s*$/, "").trim();
+}
+function spreadSeat(row) {
+  const sel = teamName(row) || String((row && row.team) || "");
+  if (sameTeam(sel, row.home)) return "home";
+  if (sameTeam(sel, row.away)) return "away";
+  return "";
+}
+function modelLineCell(bet) {
+  if (isMoneyline(bet)) return "—";
+  return lineTxt(bet.line) || "—";
+}
+function oppositePrice(row) {
+  const rows = ((state.book || {}).rows) || [];
+  const gid = row.sim_id || row.game;
+  const sel = String(row.selection || "").toLowerCase();
+  const absLine = row.line == null ? null : Math.abs(Number(row.line));
+  const match = rows.find((other) => {
+    if (other.source !== row.source || other.book == null) return false;
+    if ((other.sim_id || other.game) !== gid) return false;
+    if (other.kind !== row.kind || other.market !== row.market) return false;
+    if (String(other.selection || "").toLowerCase() === sel) return false;
+    if (row.kind === "spread" && absLine != null) {
+      if (other.line == null || Math.abs(Number(other.line)) !== absLine) return false;
+    }
+    return true;
+  });
+  return match ? match.book : null;
+}
+function rowHold(row, peers) {
+  const other = (peers || []).find((item) => item.source === row.source && !sameQuote(item, row) && item.book != null);
+  const price = other ? other.book : oppositePrice(row);
+  return holdPct(implied(row.book), implied(price));
+}
+function lineTxt(value) {
+  if (value == null || value === "") return "";
+  const n = Number(value);
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+function initials(name) {
+  return String(name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
+}
+function logo(src, name) {
+  if (!src) return `<span class="logo">${initials(name)}</span>`;
+  return `<img src="${src}" alt="" referrerpolicy="no-referrer" onerror="this.outerHTML='<span class=logo>${initials(name)}</span>'" />`;
+}
+function face(src) {
+  if (!src) return `<span class="face"></span>`;
+  return `<img class="face" src="${src}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'" />`;
+}
+function bookInfo(source) {
+  return BOOKS[source] || { name: source || "Book", src: "" };
+}
+function bookMark(source) {
+  const book = bookInfo(source);
+  const img = book.src ? `<img class="book-logo" src="${book.src}" alt="${book.name}" />` : "";
+  return `<span class="book-inline">${img}${book.name}</span>`;
+}
+function marketName(row) {
+  const raw = String((row && row.market) || "").replace(/\s+·\s+(alt|demon|goblin).*$/i, "").trim();
+  const key = raw.toLowerCase().replace(/_/g, " ");
+  const compact = key.replace(/\s+/g, " ");
+  const mapped = MARKET_LABELS[compact] || MARKET_LABELS[compact.replace(/ /g, "_")] || MARKET_LABELS[raw.toLowerCase()];
+  let name = mapped || raw.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+  if (row && row.alt) name += " · Alternate";
+  return name;
+}
+function hasProjection(row) {
+  if ((row.source === "onyx" || row.source === "pick6") && row.sim_id) return true;
+  return Boolean(row.sim_id) && (row.model_prob != null || row.model_mean != null);
+}
+function sideOf(row) {
+  if (row.side === "over" || row.side === "under") return row.side;
+  const text = String(row.selection || "").toLowerCase();
+  if (text.includes("under")) return "under";
+  if (text.includes("over")) return "over";
+  return "";
+}
+function betKey(row) {
+  const gid = row.sim_id || row.game;
+  const line = row.line == null ? "" : (row.kind === "spread" ? Math.abs(Number(row.line)).toFixed(1) : Number(row.line).toFixed(1));
+  if (row.kind === "prop") return ["prop", gid, String(row.player || "").toLowerCase(), row.market, line].join("|");
+  if (row.kind === "total") return ["total", gid, row.market, line].join("|");
+  if (row.kind === "spread") return ["spread", gid, row.market, line].join("|");
+  if (row.kind === "ml") return ["ml", gid, row.market, String(row.selection || "").toLowerCase()].join("|");
+  return ["other", gid, row.market, row.selection, line].join("|");
+}
+
+function chips(id, items, key) {
+  $(id).innerHTML = items.map(([value, label]) =>
+    `<button class="chip${state[key] === value ? " active" : ""}" data-k="${key}" data-v="${value}">${label}</button>`
+  ).join("");
+}
+
+function matchingRows(scoped) {
+  const book = state.book || { rows: [] };
+  const q = state.q.trim().toLowerCase();
+  return (book.rows || []).filter((row) => {
+    if (!hasProjection(row)) return false;
+    if (scoped && state.game && row.game !== state.game && row.sim_id !== state.game) return false;
+    if (row.kind === "other" && row.source !== "onyx") return false;
+    if (state.market !== "all" && row.kind !== state.market) return false;
+    if (state.player && (row.player || "").toLowerCase() !== state.player.toLowerCase()) return false;
+    if (row.book != null && !sanePrice(row.book, row.source)) return false;
+    if (q && !(row.game + " " + row.selection + " " + row.market + " " + (row.player || "")).toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+function groupedBets(rows) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const key = betKey(row);
+    const item = groups.get(key) || { key, quotes: [] };
+    item.quotes.push(row);
+    groups.set(key, item);
+  });
+  return [...groups.values()]
+    .filter((bet) => !state.clearOnly || bet.quotes.some((row) => row.clear))
+    .map(decorate)
+    .sort((a, b) => (Number(b.pick && b.pick.clear) - Number(a.pick && a.pick.clear)) || ((b.ev ?? -9) - (a.ev ?? -9)));
+}
+
+function bets() {
+  return groupedBets(matchingRows(true));
+}
+
+function bestQuote(quotes, pred) {
+  let best = null;
+  quotes.filter(pred).forEach((row) => {
+    if (row.book == null) return;
+    if (!best || (row.ev ?? -99) > (best.ev ?? -99)) best = row;
+  });
+  return best;
+}
+
+function decorate(bet) {
+  const quotes = (bet.quotes || []).filter((row) => row.book == null || sanePrice(row.book, row.source));
+  const pick = quotes.find((row) => row.clear && row.ev != null) || quotes.find((row) => row.ev != null) || quotes[0];
+  const over = bestQuote(quotes, (row) => sideOf(row) === "over");
+  const under = bestQuote(quotes, (row) => sideOf(row) === "under");
+  const mean = pick && pick.model_mean != null ? pick.model_mean : quotes.map((row) => row.model_mean).find((v) => v != null);
+  const std = pick && pick.model_std != null && pick.model_std > 0
+    ? pick.model_std
+    : quotes.map((row) => row.model_std).find((v) => v != null && v > 0);
+  const overProb = pick && pick.over_prob != null
+    ? pick.over_prob
+    : (pick && pick.kind === "spread" && pick.model_prob != null
+      ? pick.model_prob
+      : quotes.map((row) => row.over_prob).find((v) => v != null));
+  const line = pick && pick.line != null ? pick.line : null;
+  const spread = (pick && pick.kind) === "spread";
+  const side = spread
+    ? (spreadSeat(pick) || "")
+    : (sideOf(pick) || (mean != null && line != null && mean < line ? "under" : "over"));
+  const books = {};
+  quotes.forEach((row) => {
+    const src = row.source || "book";
+    const item = books[src] || { source: src, line: row.line, over: null, under: null, away: null, home: null, other: null };
+    if (spread) {
+      const seat = spreadSeat(row);
+      if (seat === "away") item.away = row;
+      else if (seat === "home") item.home = row;
+      else item.other = row;
+    } else {
+      const sideName = sideOf(row);
+      if (sideName === "over") item.over = row.book;
+      else if (sideName === "under") item.under = row.book;
+      else item.other = row.book;
+    }
+    if (row.line != null) item.line = row.line;
+    books[src] = item;
+  });
+  return {
+    ...bet,
+    quotes,
+    pick,
+    over,
+    under,
+    mean,
+    std,
+    overProb,
+    line,
+    side,
+    ev: pick && pick.ev,
+    books: Object.values(books),
+  };
+}
+
+function renderGames() {
+  const games = (state.book && state.book.games) || [];
+  const counts = {};
+  let total = 0;
+  groupedBets(matchingRows(false)).forEach((bet) => {
+    const id = bet.pick.sim_id || bet.pick.game;
+    counts[id] = (counts[id] || 0) + 1;
+    total += 1;
+  });
+  const shown = games.filter((g) => g.sim_away != null && ((counts[g.id] || counts[g.game] || 0) > 0 || state.game === (g.id || g.game)));
+  $("games").innerHTML = `<button class="game${state.game === "" ? " active" : ""}" data-game="">
+      <span></span><div><b>All games</b><small>${state.clearOnly ? "Clear edges" : "Posted markets"}</small></div><span></span>
+      <span class="count">${total}</span>
+    </button>` + shown.map((g) => {
+    const id = g.id || g.game;
+    const n = counts[g.id] || counts[g.game] || 0;
+    return `<button class="game${state.game === id ? " active" : ""}" data-game="${id}">
+      ${logo(g.away_logo, g.away)}
+      <div><b>${g.away} @ ${g.home}</b><small>${g.start || ""}${g.sim_away != null ? " · " + g.sim_away + "–" + g.sim_home : ""}</small></div>
+      ${logo(g.home_logo, g.home)}
+      <span class="count">${n}</span>
+    </button>`;
+  }).join("");
+  $("games").querySelectorAll(".game").forEach((btn) => btn.onclick = () => {
+    state.game = btn.dataset.game;
+    render();
+  });
+}
+
+function scoreboard(game) {
+  if (!game) return "";
+  return `<section class="scoreboard">
+    <div class="team">${logo(game.away_logo, game.away)}${game.away}</div>
+    <div class="mid"><b>${game.sim_away != null ? Number(game.sim_away).toFixed(1) + " – " + Number(game.sim_home).toFixed(1) : "VS"}</b>model</div>
+    <div class="team">${game.home}${logo(game.home_logo, game.home)}</div>
+  </section>`;
+}
+
+function asHex(raw) {
+  if (!raw) return "";
+  const hex = String(raw).startsWith("#") ? String(raw) : "#" + raw;
+  return /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : "";
+}
+function hexColor(id, alt) {
+  const rec = TEAM_COLORS[String(id || "")];
+  if (!rec) return "";
+  return asHex(alt ? rec.alt : rec.color) || asHex(rec.color);
+}
+function hexDist(a, b) {
+  const parts = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const left = parts(a), right = parts(b);
+  return Math.hypot(left[0] - right[0], left[1] - right[1], left[2] - right[2]);
+}
+function sameTeam(a, b) {
+  const left = String(a || "").toLowerCase();
+  const right = String(b || "").toLowerCase();
+  return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
+}
+function chartColors(bet) {
+  const row = bet.pick || {};
+  let away = hexColor(row.away_id);
+  let home = hexColor(row.home_id);
+  if (away && home && hexDist(away, home) < 50) {
+    home = hexColor(row.home_id, true) || home;
+    if (hexDist(away, home) < 50) away = hexColor(row.away_id, true) || away;
+  }
+  const both = [away, home].filter(Boolean);
+  const kind = row.kind;
+  const market = String(row.market || "");
+  const twoTeam = kind === "total" && !/team/i.test(market);
+  if (twoTeam) return both;
+  let tid = "";
+  if (kind === "prop") {
+    if (sameTeam(row.player_team || row.team, row.home)) tid = row.home_id;
+    else if (sameTeam(row.player_team || row.team, row.away)) tid = row.away_id;
+  } else if (kind === "ml" || kind === "spread" || /team/i.test(market)) {
+    const sel = String(row.selection || "") + " " + String(row.player_team || row.team || "");
+    if (sameTeam(sel, row.home)) tid = row.home_id;
+    else if (sameTeam(sel, row.away)) tid = row.away_id;
+  }
+  const one = hexColor(tid);
+  return one ? [one] : both;
+}
+function density(bet) {
+  if (isSpread(bet) || isMoneyline(bet)) return "";
+  const mean = bet.mean, std = bet.std, line = bet.line;
+  if (mean == null || std == null || std <= 0 || line == null) return "";
+  const w = 720, h = 132, padL = 6, padR = 6, padT = 18, padB = 22;
+  const lo = Math.min(Math.max(0, mean - 3.5 * std), line - 0.8 * std);
+  const hi = Math.max(mean + 3.5 * std, line + 0.8 * std);
+  const n = 96;
+  const pdf = (x) => {
+    const z = (x - mean) / std;
+    return Math.exp(-0.5 * z * z);
+  };
+  const xs = [];
+  let peak = 0;
+  for (let i = 0; i <= n; i++) {
+    const x = lo + (hi - lo) * i / n;
+    const y = pdf(x);
+    xs.push([x, y]);
+    if (y > peak) peak = y;
+  }
+  const X = (x) => padL + (x - lo) / (hi - lo) * (w - padL - padR);
+  const Y = (y) => padT + (1 - y / peak) * (h - padT - padB);
+  let d = `M ${X(xs[0][0]).toFixed(1)} ${(h - padB).toFixed(1)}`;
+  xs.forEach(([x, y]) => { d += ` L ${X(x).toFixed(1)} ${Y(y).toFixed(1)}`; });
+  d += ` L ${X(xs[n][0]).toFixed(1)} ${(h - padB).toFixed(1)} Z`;
+  const lx = X(line);
+  const mx = X(mean);
+  const ticks = [];
+  const span = hi - lo;
+  const step = span > 40 ? 10 : span > 16 ? 5 : span > 8 ? 2 : 1;
+  const start = Math.ceil(lo / step) * step;
+  for (let t = start; t <= hi + 1e-6; t += step) ticks.push(t);
+  const colors = chartColors(bet);
+  const gid = "fill-" + String(bet.key || "x").replace(/[^a-z0-9]/gi, "");
+  const fill = colors.length >= 2
+    ? `url(#${gid})`
+    : (colors[0] || "var(--fill)");
+  const defs = colors.length >= 2
+    ? `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="${colors[0]}" /><stop offset="50%" stop-color="${colors[0]}" /><stop offset="50%" stop-color="${colors[1]}" /><stop offset="100%" stop-color="${colors[1]}" /></linearGradient></defs>`
+    : "";
+  let lineX = lx, meanX = mx;
+  let lineAnchor = "middle", meanAnchor = "middle";
+  if (Math.abs(mx - lx) < 50) {
+    const mid = (lx + mx) / 2;
+    lineX = Math.max(padL + 24, mid - 28);
+    meanX = Math.min(w - padR - 24, mid + 28);
+    lineAnchor = "end";
+    meanAnchor = "start";
+  }
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    ${defs}
+    <path d="${d}" fill="${fill}" fill-opacity="0.85" />
+    <line x1="${lx.toFixed(1)}" y1="${padT}" x2="${lx.toFixed(1)}" y2="${h - padB}" stroke="var(--ink)" stroke-width="1.2" />
+    <line x1="${mx.toFixed(1)}" y1="${padT}" x2="${mx.toFixed(1)}" y2="${h - padB}" stroke="var(--navy)" stroke-width="1.2" stroke-dasharray="4 3" />
+    <text x="${lineX.toFixed(1)}" y="13" text-anchor="${lineAnchor}" fill="var(--ink)" font-size="11">${lineTxt(line)}</text>
+    <text x="${meanX.toFixed(1)}" y="13" text-anchor="${meanAnchor}" fill="var(--navy)" font-size="11">${lineTxt(mean)}</text>
+    ${ticks.map((t) => `<text x="${X(t).toFixed(1)}" y="${h - 6}" text-anchor="middle" fill="var(--muted)" font-size="11">${lineTxt(t)}</text>`).join("")}
+  </svg>`;
+}
+
+function caption(bet) {
+  if (bet.line == null) return "";
+  const sims = 1000;
+  if (isSpread(bet)) {
+    const coverP = bet.overProb != null ? bet.overProb : (bet.pick && bet.pick.model_prob);
+    const coverN = coverP == null ? null : Math.round(coverP * sims);
+    const who = teamName(bet.pick) || "this side";
+    if (coverN == null) return "";
+    return `<div class="caption">${coverN} of ${sims} simulated games ${who} covers ${signedLine(bet.line)} · model margin ${signedLine(bet.mean)}</div>`;
+  }
+  const overN = bet.overProb == null ? null : Math.round(bet.overProb * sims);
+  if (overN == null) return `<div class="caption">Dashed is my projection</div>`;
+  return `<div class="caption">${overN} of ${sims} simulated games over ${lineTxt(bet.line)} · ${sims - overN} under · dashed is my projection ${lineTxt(bet.mean)}</div>`;
+}
+
+function sideProbs(bet) {
+  const pick = bet.pick || {};
+  let modelOver = bet.overProb;
+  let modelUnder = modelOver == null ? null : 1 - modelOver;
+  if (modelOver == null && pick.model_prob != null) {
+    const side = sideOf(pick);
+    if (side === "under") {
+      modelUnder = pick.model_prob;
+      modelOver = 1 - pick.model_prob;
+    } else {
+      modelOver = pick.model_prob;
+      modelUnder = 1 - pick.model_prob;
+    }
+  }
+  const bookOver = bet.over ? implied(bet.over.book) : null;
+  const bookUnder = bet.under ? implied(bet.under.book) : (pick.book != null && !bet.over ? implied(pick.book) : null);
+  const twoSided = bet.over != null || bet.under != null || bet.line != null;
+  return {
+    twoSided,
+    modelOver,
+    modelUnder,
+    modelOverOdds: americanFromProb(modelOver),
+    modelUnderOdds: americanFromProb(modelUnder),
+    bookOver,
+    bookUnder,
+    bookOverOdds: bet.over ? bet.over.book : (twoSided ? null : pick.book),
+    bookUnderOdds: bet.under ? bet.under.book : null,
+    modelSide: pick.model_prob,
+    modelSideOdds: pick.model_odds != null ? pick.model_odds : americanFromProb(pick.model_prob),
+    bookSide: implied(pick.book),
+    bookSideOdds: pick.book,
+  };
+}
+
+function winningSide(bet) {
+  if (isSpread(bet)) {
+    const quote = bestQuote(bet.quotes, (row) => sanePrice(row.book, row.source));
+    if (quote) return { side: spreadSeat(quote), quote };
+    if (bet.pick) return { side: spreadSeat(bet.pick), quote: bet.pick };
+    return { side: "", quote: null };
+  }
+  const overEv = bet.over && bet.over.ev != null ? bet.over.ev : null;
+  const underEv = bet.under && bet.under.ev != null ? bet.under.ev : null;
+  if (overEv != null && (underEv == null || overEv >= underEv)) {
+    return { side: "over", quote: bet.over };
+  }
+  if (underEv != null) return { side: "under", quote: bet.under };
+  const quote = bestQuote(bet.quotes, () => true);
+  if (quote) return { side: sideOf(quote), quote };
+  if (bet.pick && bet.pick.book != null) return { side: sideOf(bet.pick), quote: bet.pick };
+  return { side: "", quote: null };
+}
+
+function sameQuote(row, quote) {
+  if (!row || !quote) return false;
+  return row.source === quote.source
+    && row.book === quote.book
+    && String(row.line ?? "") === String(quote.line ?? "")
+    && sideOf(row) === sideOf(quote)
+    && String(row.selection || "") === String(quote.selection || "");
+}
+
+function pricedBooks(bet) {
+  const sources = new Set();
+  (bet.quotes || []).forEach((row) => {
+    if (row.book != null && row.source) sources.add(row.source);
+  });
+  return sources.size;
+}
+
+function showBest(bet) {
+  return pricedBooks(bet) > 1;
+}
+
+function modelRow(bet, twoSided) {
+  const p = sideProbs(bet);
+  if (twoSided) {
+    if (p.modelOver == null && p.modelUnder == null) return "";
+    return `<tr class="model">
+      <td class="left"><span class="name">Model</span></td>
+      <td>${modelLineCell(bet)}</td>
+      <td>${priceCell(p.modelOver, p.modelOverOdds)}</td>
+      <td>${priceCell(p.modelUnder, p.modelUnderOdds)}</td>
+      <td>—</td>
+    </tr>`;
+  }
+  if (p.modelSide == null) return "";
+  const line = isMoneyline(bet) ? "" : `<td>${modelLineCell(bet)}</td>`;
+  return `<tr class="model">
+    <td class="left"><span class="name">Model</span></td>
+    ${line}
+    <td>${fairPct(p.modelSide)}</td>
+    <td>${odds(p.modelSideOdds)}</td>
+    <td>—</td>
+  </tr>`;
+}
+
+function spreadCell(row) {
+  if (!row || row.book == null) return "—";
+  return `<span class="pair"><span>${signedLine(row.line)}</span>${priceCell(implied(row.book), row.book)}</span>`;
+}
+function spreadModelCell(line, prob) {
+  if (prob == null) return "—";
+  return `<span class="pair"><span>${signedLine(line)}</span>${priceCell(prob, americanFromProb(prob))}</span>`;
+}
+function spreadModelRow(bet) {
+  const awayQ = (bet.quotes || []).find((row) => spreadSeat(row) === "away" && row.model_prob != null);
+  const homeQ = (bet.quotes || []).find((row) => spreadSeat(row) === "home" && row.model_prob != null);
+  const awayP = awayQ ? awayQ.model_prob : (homeQ && homeQ.model_prob != null ? 1 - homeQ.model_prob : null);
+  const homeP = homeQ ? homeQ.model_prob : (awayQ && awayQ.model_prob != null ? 1 - awayQ.model_prob : null);
+  const awayLine = awayQ && awayQ.line != null ? awayQ.line : (bet.line != null && spreadSeat(bet.pick) === "away" ? bet.line : (bet.line != null ? -Number(bet.line) : null));
+  const homeLine = homeQ && homeQ.line != null ? homeQ.line : (bet.line != null && spreadSeat(bet.pick) === "home" ? bet.line : (bet.line != null ? -Number(bet.line) : null));
+  if (awayP == null && homeP == null) return "";
+  return `<tr class="model">
+    <td class="left"><span class="name">Model</span></td>
+    <td>${spreadModelCell(awayLine, awayP)}</td>
+    <td>${spreadModelCell(homeLine, homeP)}</td>
+    <td>—</td>
+  </tr>`;
+}
+function bookTable(bet) {
+  if (isSpread(bet)) {
+    const win = winningSide(bet);
+    const mark = showBest(bet);
+    const awayName = (bet.pick && bet.pick.away) || "Away";
+    const homeName = (bet.pick && bet.pick.home) || "Home";
+    const rows = bet.books.filter((b) => b.away || b.home);
+    return `<table class="books"><thead><tr><th class="left">Book</th><th>${awayName}</th><th>${homeName}</th><th>Hold</th></tr></thead><tbody>
+      ${spreadModelRow(bet)}
+      ${rows.map((b) => {
+        const bestAway = mark && win.quote && b.away && sameQuote(b.away, win.quote);
+        const bestHome = mark && win.quote && b.home && sameQuote(b.home, win.quote);
+        return `<tr class="${bestAway || bestHome ? "best" : ""}">
+          <td class="left"><span class="name">${bookMark(b.source)}</span></td>
+          <td>${spreadCell(b.away)}${bestAway ? `<span class="flag">Best</span>` : ""}</td>
+          <td>${spreadCell(b.home)}${bestHome ? `<span class="flag">Best</span>` : ""}</td>
+          <td>${holdTxt(holdPct(implied(b.away && b.away.book), implied(b.home && b.home.book)))}</td>
+        </tr>`;
+      }).join("")}
+    </tbody></table>`;
+  }
+  const twoSided = bet.books.some((b) => b.over != null || b.under != null);
+  const win = winningSide(bet);
+  const mark = showBest(bet);
+  if (!twoSided) {
+    const seen = new Set();
+    const rows = bet.quotes.filter((row) => {
+      const key = [row.source, row.book, row.line, sideOf(row), row.selection].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const ml = isMoneyline(bet);
+    const head = ml
+      ? `<th class="left">Book</th><th>Prob</th><th>Odds</th><th>Hold</th>`
+      : `<th class="left">Book</th><th>Line</th><th>Prob</th><th>Odds</th><th>Hold</th>`;
+    return `<table class="books"><thead><tr>${head}</tr></thead><tbody>
+      ${modelRow(bet, false)}
+      ${rows.map((row) => {
+        const isBest = mark && sameQuote(row, win.quote);
+        const line = ml ? "" : `<td>${lineTxt(row.line != null ? row.line : bet.line) || "—"}</td>`;
+        return `<tr class="${isBest ? "best" : ""}">
+        <td class="left"><span class="name">${bookMark(row.source)}</span></td>
+        ${line}
+        <td>${fairPct(implied(row.book))}</td>
+        <td>${odds(row.book)}${isBest ? `<span class="flag">Best</span>` : ""}</td>
+        <td>${holdTxt(rowHold(row, rows))}</td>
+      </tr>`;
+      }).join("")}
+    </tbody></table>`;
+  }
+  return `<table class="books"><thead><tr><th class="left">Book</th><th>Line</th><th>Over</th><th>Under</th><th>Hold</th></tr></thead><tbody>
+    ${modelRow(bet, true)}
+    ${bet.books.map((b) => {
+      const bestOver = mark && win.side === "over" && win.quote && b.source === win.quote.source && b.over === win.quote.book;
+      const bestUnder = mark && win.side === "under" && win.quote && b.source === win.quote.source && b.under === win.quote.book;
+      return `<tr class="${bestOver || bestUnder ? "best" : ""}">
+        <td class="left"><span class="name">${bookMark(b.source)}</span></td>
+        <td>${lineTxt(b.line) || "—"}</td>
+        <td>${priceCell(implied(b.over), b.over)}${bestOver ? `<span class="flag">Best</span>` : ""}</td>
+        <td>${priceCell(implied(b.under), b.under)}${bestUnder ? `<span class="flag">Best</span>` : ""}</td>
+        <td>${holdTxt(holdPct(implied(b.over), implied(b.under)))}</td>
+      </tr>`;
+    }).join("")}
+  </tbody></table>`;
+}
+
+function bestLine(bet) {
+  if (!showBest(bet)) return "";
+  const win = winningSide(bet);
+  const q = win.quote;
+  if (!q || q.book == null) return "";
+  if (isSpread(bet)) {
+    const who = teamName(q) || q.selection || "";
+    const line = q.line != null ? ` <b>${signedLine(q.line)}</b>` : "";
+    return `<div class="best">Best available — ${who}${line} ${odds(q.book)} at ${bookMark(q.source)}</div>`;
+  }
+  const label = win.side === "over" ? "over" : win.side === "under" ? "under" : "";
+  const line = q.line != null ? ` <b>${lineTxt(q.line)}</b>` : "";
+  const side = label ? `${label}${line} ` : "";
+  return `<div class="best">Best available — ${side}${odds(q.book)} at ${bookMark(q.source)}</div>`;
+}
+
+function titleOf(bet) {
+  const row = bet.pick;
+  const market = marketName(row);
+  if (row.kind === "prop") {
+    return {
+      icon: face(row.headshot),
+      name: row.player || row.selection,
+      sub: `${market} · ${row.game}`,
+      tag: market,
+    };
+  }
+  const homePick = String(row.selection || "").toLowerCase().includes(String(row.home || "").toLowerCase());
+  return {
+    icon: logo(homePick ? row.home_logo : row.away_logo, row.selection),
+    name: row.kind === "total" && !String(market).toLowerCase().includes("team") ? row.game : row.selection.replace(/over|under/ig, "").trim() || row.game,
+    sub: `${market} · ${row.game}`,
+    tag: market,
+  };
+}
+
+function card(bet) {
+  const title = titleOf(bet);
+  const win = winningSide(bet);
+  const spread = isSpread(bet);
+  const covers = spread && bet.mean != null && bet.line != null && (Number(bet.mean) + Number(bet.line) > 0);
+  const side = spread
+    ? (covers ? "COVER" : "NO COVER")
+    : (win.side || bet.side || "over").toUpperCase();
+  const ev = win.quote && win.quote.ev != null ? win.quote.ev : bet.ev;
+  const value = ev != null && ev > 0;
+  const lineLbl = bet.line != null
+    ? (value ? side + " VALUE" : side)
+    : (bet.pick.kind === "ml" ? "Price" : side);
+  const modelVal = spread && bet.mean != null
+    ? signedLine(bet.mean)
+    : (bet.mean != null ? Number(bet.mean).toFixed(1) : (bet.pick.model_prob != null ? (100 * bet.pick.model_prob).toFixed(0) + "%" : "—"));
+  const bookVal = bet.line != null
+    ? (spread ? signedLine(bet.line) : lineTxt(bet.line))
+    : odds((win.quote && win.quote.book) || bet.pick.book);
+  return `<article class="bet">
+    <div class="bet-top">
+      <div class="who">${title.icon}<div><b>${title.name}</b><span>${title.sub}</span></div></div>
+      <div class="meta"><span>${title.tag}</span><span class="ev">${pct(ev)}</span></div>
+    </div>
+    <div class="hero">
+      ${isAlt(bet) ? "" : `<div class="pair"><span class="lbl">Model</span><span class="val">${modelVal}</span></div>`}
+      <div class="pair"><span class="lbl">${lineLbl}</span><span class="val">${bookVal}</span></div>
+    </div>
+    ${bestLine(bet)}
+    ${density(bet)}
+    ${caption(bet)}
+    ${bookTable(bet)}
+  </article>`;
+}
+
+function tableFor(list) {
+  if (!list.length) return `<div class="empty">No posted markets in this view.</div>`;
+  return `<div class="stack">${list.map(card).join("")}</div>`;
+}
+
+function render() {
+  chips("markets", MARKET_CHIPS, "market");
+  $("views").innerHTML = VIEW_CHIPS.map(([value, label]) =>
+    `<button class="chip${(state.clearOnly ? "clear" : "posted") === value ? " active" : ""}" data-clear="${value}">${label}</button>`
+  ).join("");
+  $("views").querySelectorAll(".chip").forEach((btn) => btn.onclick = () => {
+    state.clearOnly = btn.dataset.clear === "clear";
+    render();
+  });
+  const list = bets();
+  const games = (state.book && state.book.games) || [];
+  const selected = state.game ? games.find((g) => g.id === state.game || g.game === state.game) : null;
+  renderGames();
+  $("board").innerHTML = selected ? scoreboard(selected) : "";
+  $("table").innerHTML = tableFor(list);
+}
+document.body.addEventListener("click", (ev) => {
+  const chip = ev.target.closest(".chip");
+  if (!chip) return;
+  state[chip.dataset.k] = chip.dataset.v;
+  render();
+});
+$("q").oninput = () => { state.q = $("q").value; render(); };
+
+async function load() {
+  $("table").innerHTML = `<div class="empty">Loading the board…</div>`;
+  try {
+    TEAM_COLORS = await (await fetch("static/team_colors.json")).json();
+  } catch (err) {
+    TEAM_COLORS = {};
+  }
+  const response = await fetch("edges.json");
+  state.book = await response.json();
+  render();
+}
+$("refresh").onclick = async () => {
+  $("refresh").disabled = true;
+  $("refresh").textContent = "Refreshing…";
+  $("status").textContent = "Pulling PrizePicks, Kalshi, Polymarket, Underdog, Novig, Onyx, Pick6…";
+  try {
+    throw new Error("Live refresh runs on the local desk");
+    const body = await response.json();
+    state.book = body;
+    render();
+    const n = (body.rows || []).length;
+    $("status").textContent = body.error
+      ? body.error
+      : `${n} prices · ${body.matched_games || 0} games`;
+  } catch (err) {
+    $("status").textContent = "Refresh failed. The last board is still up.";
+  } finally {
+    $("refresh").disabled = false;
+    $("refresh").textContent = "Refresh odds";
+  }
+};
+load();
+</script>
+</body>
+</html>
