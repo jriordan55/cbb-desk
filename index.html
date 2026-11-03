@@ -491,12 +491,20 @@ function chips(id, items, key) {
   ).join("");
 }
 
+function tipoffPassed(start) {
+  const text = String(start || "").trim();
+  if (!text || text.length <= 10 || !text.includes("T")) return false;
+  const ms = Date.parse(text);
+  return Number.isFinite(ms) && ms <= Date.now();
+}
+
 function matchingRows(scoped) {
   const book = state.book || { rows: [] };
   const q = state.q.trim().toLowerCase();
   return (book.rows || []).filter((row) => {
     const day = String(row.start || "").slice(0, 10);
     if (day && day < todayISO()) return false;
+    if (tipoffPassed(row.start)) return false;
     if (!hasProjection(row)) return false;
     if (scoped && state.game && row.game !== state.game && row.sim_id !== state.game) return false;
     if (row.kind === "other" && row.source !== "onyx") return false;
@@ -609,6 +617,7 @@ function renderGames() {
     if (g.sim_away == null) return false;
     const day = String(g.start || "").slice(0, 10);
     if (day && day < todayISO()) return false;
+    if (tipoffPassed(g.start)) return false;
     return true;
   });
   $("games").innerHTML = `<button class="game${state.game === "" ? " active" : ""}" data-game="">
