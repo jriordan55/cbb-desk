@@ -505,6 +505,7 @@ function matchingRows(scoped) {
     const day = String(row.start || "").slice(0, 10);
     if (day && day < todayISO()) return false;
     if (tipoffPassed(row.start)) return false;
+    if (row.alt && (row.kind === "spread" || row.kind === "total")) return false;
     if (!hasProjection(row)) return false;
     if (scoped && state.game && row.game !== state.game && row.sim_id !== state.game) return false;
     if (row.kind === "other" && row.source !== "onyx") return false;
