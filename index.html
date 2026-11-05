@@ -366,12 +366,22 @@ function isSpread(bet) {
 function isAlt(bet) {
   return Boolean((bet.pick && bet.pick.alt) || (bet.quotes || []).some((row) => row.alt));
 }
-function sanePrice(price, source) {
+function sanePrice(price, source, row) {
   if (price == null || price === "") return false;
   const n = Number(price);
   if (!Number.isFinite(n) || n === 0) return false;
-  if (source === "onyx") return true;
-  return Math.abs(n) <= 2500;
+  if (source === "onyx") {
+    // still drop absurd longshot ML quotes that disagree with the model
+  } else if (Math.abs(n) > 2500) {
+    return false;
+  }
+  // Prediction-market MLs often price 10-point dogs at +1500/+2000 (longshot
+  // bias). Hide those so the board isn't topped by fake 300% EV.
+  if (row && row.kind === "ml" && row.model_prob != null && n >= 700) {
+    const bp = implied(n);
+    if (bp != null && bp < Number(row.model_prob) * 0.55) return false;
+  }
+  return true;
 }
 function signedLine(value) {
   if (value == null || value === "") return "";
@@ -505,13 +515,13 @@ function matchingRows(scoped) {
     const day = String(row.start || "").slice(0, 10);
     if (day && day < todayISO()) return false;
     if (tipoffPassed(row.start)) return false;
-    if (row.alt && (row.kind === "spread" || row.kind === "total")) return false;
+    if ((row.kind === "spread" || row.kind === "total") && (row.alt || row.is_main === false || row.is_main === "false")) return false;
     if (!hasProjection(row)) return false;
     if (scoped && state.game && row.game !== state.game && row.sim_id !== state.game) return false;
     if (row.kind === "other" && row.source !== "onyx") return false;
     if (state.market !== "all" && row.kind !== state.market) return false;
     if (state.player && (row.player || "").toLowerCase() !== state.player.toLowerCase()) return false;
-    if (row.book != null && !sanePrice(row.book, row.source)) return false;
+    if (row.book != null && !sanePrice(row.book, row.source, row)) return false;
     if (q && !(row.game + " " + row.selection + " " + row.market + " " + (row.player || "")).toLowerCase().includes(q)) return false;
     return true;
   });
@@ -545,7 +555,7 @@ function bestQuote(quotes, pred) {
 }
 
 function decorate(bet) {
-  const quotes = (bet.quotes || []).filter((row) => row.book == null || sanePrice(row.book, row.source));
+  const quotes = (bet.quotes || []).filter((row) => row.book == null || sanePrice(row.book, row.source, row));
   const pick = quotes.find((row) => row.clear && row.ev != null) || quotes.find((row) => row.ev != null) || quotes[0];
   const over = bestQuote(quotes, (row) => sideOf(row) === "over");
   const under = bestQuote(quotes, (row) => sideOf(row) === "under");
@@ -619,10 +629,22 @@ function renderGames() {
     const day = String(g.start || "").slice(0, 10);
     if (day && day < todayISO()) return false;
     if (tipoffPassed(g.start)) return false;
-    return true;
+    const id = g.id || g.game;
+    return (counts[g.id] || counts[g.game] || 0) > 0 || state.game === id;
   });
   $("games").innerHTML = `<button class="game${state.game === "" ? " active" : ""}" data-game="">
       <span></span><div><b>All games</b><small>${state.clearOnly ? "Labs agree · 20%+ edge" : "Posted markets"}</small></div><span></span>
+      <span class="count">${total}</span>
+    </button>` + shown.map((g) => {
+    const id = g.id || g.game;
+    const n = counts[g.id] || counts[g.game] || 0;
+    return `<button class="game${state.game === id ? " active" : ""}" data-game="${id}">
+      ${logo(g.away_logo, g.away)}
+      <div><b>${g.away} @ ${g.home}</b><small>${g.start || ""}${g.sim_away != null ? " · " + g.sim_away + "–" + g.sim_home : ""}</small></div>
+      ${logo(g.home_logo, g.home)}
+      <span class="count">${n}</span>
+    </button>`;
+  }).join("");
   $("games").querySelectorAll(".game").forEach((btn) => btn.onclick = () => {
     state.game = btn.dataset.game;
     render();
@@ -794,7 +816,7 @@ function sideProbs(bet) {
 
 function winningSide(bet) {
   if (isSpread(bet)) {
-    const quote = bestQuote(bet.quotes, (row) => sanePrice(row.book, row.source));
+    const quote = bestQuote(bet.quotes, (row) => sanePrice(row.book, row.source, row));
     if (quote) return { side: spreadSeat(quote), quote };
     if (bet.pick) return { side: spreadSeat(bet.pick), quote: bet.pick };
     return { side: "", quote: null };
@@ -832,135 +854,6 @@ function showBest(bet) {
   return pricedBooks(bet) > 1;
 }
 
-function modelRow(bet, twoSided) {
-  const p = sideProbs(bet);
-  if (twoSided) {
-    if (p.modelOver == null && p.modelUnder == null) return "";
-    return `<tr class="model">
-      <td class="left"><span class="name">Model</span></td>
-      <td>${modelLineCell(bet)}</td>
-      <td>${priceCell(p.modelOver, p.modelOverOdds)}</td>
-      <td>${priceCell(p.modelUnder, p.modelUnderOdds)}</td>
-      <td>—</td>
-    </tr>`;
-function modelRow(bet, twoSided) {
-  const p = sideProbs(bet);
-  if (twoSided) {
-    if (p.modelOver == null && p.modelUnder == null) return "";
-    return `<tr class="model">
-      <td class="left"><span class="name">Model</span></td>
-      <td>${modelLineCell(bet)}</td>
-      <td>${priceCell(p.modelOver, p.modelOverOdds)}</td>
-      <td>${priceCell(p.modelUnder, p.modelUnderOdds)}</td>
-      <td>—</td>
-    </tr>`;
-  }
-  if (p.modelSide == null) return "";
-  const line = isMoneyline(bet) ? "" : `<td>${modelLineCell(bet)}</td>`;
-  return `<tr class="model">
-    <td class="left"><span class="name">Model</span></td>
-    ${line}
-    <td>${fairPct(p.modelSide)}</td>
-    <td>${odds(p.modelSideOdds)}</td>
-    <td>—</td>
-  </tr>`;
-  const awayQ = (bet.quotes || []).find((row) => spreadSeat(row) === "away" && row.model_prob != null);
-  const homeQ = (bet.quotes || []).find((row) => spreadSeat(row) === "home" && row.model_prob != null);
-  const awayP = awayQ ? awayQ.model_prob : (homeQ && homeQ.model_prob != null ? 1 - homeQ.model_prob : null);
-  const homeP = homeQ ? homeQ.model_prob : (awayQ && awayQ.model_prob != null ? 1 - awayQ.model_prob : null);
-  const awayLine = awayQ && awayQ.line != null ? awayQ.line : (bet.line != null && spreadSeat(bet.pick) === "away" ? bet.line : (bet.line != null ? -Number(bet.line) : null));
-  const homeLine = homeQ && homeQ.line != null ? homeQ.line : (bet.line != null && spreadSeat(bet.pick) === "home" ? bet.line : (bet.line != null ? -Number(bet.line) : null));
-  if (awayP == null && homeP == null) return "";
-  return `<tr class="model">
-    <td class="left"><span class="name">Model</span></td>
-    <td>${spreadModelCell(awayLine, awayP)}</td>
-function spreadModelRow(bet) {
-  const awayQ = (bet.quotes || []).find((row) => spreadSeat(row) === "away" && row.model_prob != null);
-  const homeQ = (bet.quotes || []).find((row) => spreadSeat(row) === "home" && row.model_prob != null);
-  const awayP = awayQ ? awayQ.model_prob : (homeQ && homeQ.model_prob != null ? 1 - homeQ.model_prob : null);
-  const homeP = homeQ ? homeQ.model_prob : (awayQ && awayQ.model_prob != null ? 1 - awayQ.model_prob : null);
-  const awayLine = awayQ && awayQ.line != null ? awayQ.line : (bet.line != null && spreadSeat(bet.pick) === "away" ? bet.line : (bet.line != null ? -Number(bet.line) : null));
-  const homeLine = homeQ && homeQ.line != null ? homeQ.line : (bet.line != null && spreadSeat(bet.pick) === "home" ? bet.line : (bet.line != null ? -Number(bet.line) : null));
-  if (awayP == null && homeP == null) return "";
-  return `<tr class="model">
-    <td class="left"><span class="name">Model</span></td>
-    <td>${spreadModelCell(awayLine, awayP)}</td>
-    <td>${spreadModelCell(homeLine, homeP)}</td>
-    <td>—</td>
-  </tr>`;
-        const bestAway = mark && win.quote && b.away && sameQuote(b.away, win.quote);
-        const bestHome = mark && win.quote && b.home && sameQuote(b.home, win.quote);
-        return `<tr class="${bestAway || bestHome ? "best" : ""}">
-          <td class="left"><span class="name">${bookMark(b.source)}</span></td>
-          <td>${spreadCell(b.away)}${bestAway ? `<span class="flag">Best</span>` : ""}</td>
-          <td>${spreadCell(b.home)}${bestHome ? `<span class="flag">Best</span>` : ""}</td>
-          <td>${holdTxt(holdPct(implied(b.away && b.away.book), implied(b.home && b.home.book)))}</td>
-        </tr>`;
-    return `<table class="books"><thead><tr><th class="left">Book</th><th>${awayName}</th><th>${homeName}</th><th>QK</th></tr></thead><tbody>
-      ${spreadModelRow(bet)}
-      ${rows.map((b) => {
-        const bestAway = mark && win.quote && b.away && sameQuote(b.away, win.quote);
-        const bestHome = mark && win.quote && b.home && sameQuote(b.home, win.quote);
-        return `<tr class="${bestAway || bestHome ? "best" : ""}">
-          <td class="left"><span class="name">${bookMark(b.source)}</span></td>
-          <td>${spreadCell(b.away)}${bestAway ? `<span class="flag">Best</span>` : ""}</td>
-          <td>${spreadCell(b.home)}${bestHome ? `<span class="flag">Best</span>` : ""}</td>
-          <td>${spreadBookQK(b)}</td>
-        </tr>`;
-      }).join("")}
-    </tbody></table>`;
-  }
-  const twoSided = bet.books.some((b) => b.over != null || b.under != null);
-  const win = winningSide(bet);
-  const mark = showBest(bet);
-  if (!twoSided) {
-    const seen = new Set();
-    const rows = bet.quotes.filter((row) => {
-      const key = [row.source, row.book, row.line, sideOf(row), row.selection].join("|");
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    const ml = isMoneyline(bet);
-    const head = ml
-      ? `<th class="left">Book</th><th>Prob</th><th>Odds</th><th>QK</th>`
-      : `<th class="left">Book</th><th>Line</th><th>Prob</th><th>Odds</th><th>QK</th>`;
-    return `<table class="books"><thead><tr>${head}</tr></thead><tbody>
-      ${modelRow(bet, false)}
-      ${rows.map((row) => {
-        const isBest = mark && sameQuote(row, win.quote);
-        const line = ml ? "" : `<td>${lineTxt(row.line != null ? row.line : bet.line) || "—"}</td>`;
-        return `<tr class="${isBest ? "best" : ""}">
-        <td class="left"><span class="name">${bookMark(row.source)}</span></td>
-        ${line}
-        <td>${fairPct(implied(row.book))}</td>
-        <td>${odds(row.book)}${isBest ? `<span class="flag">Best</span>` : ""}</td>
-        <td>${quoteQK(row)}</td>
-      </tr>`;
-      }).join("")}
-    </tbody></table>`;
-  }
-  return `<table class="books"><thead><tr><th class="left">Book</th><th>Line</th><th>Over</th><th>Under</th><th>QK</th></tr></thead><tbody>
-    ${modelRow(bet, true)}
-    ${bet.books.map((b) => {
-      const bestOver = mark && win.side === "over" && win.quote && b.source === win.quote.source && b.over === win.quote.book;
-      const bestUnder = mark && win.side === "under" && win.quote && b.source === win.quote.source && b.under === win.quote.book;
-      return `<tr class="${bestOver || bestUnder ? "best" : ""}">
-        <td class="left"><span class="name">${bookMark(b.source)}</span></td>
-        <td>${lineTxt(b.line) || "—"}</td>
-        <td>${priceCell(implied(b.over), b.over)}${bestOver ? `<span class="flag">Best</span>` : ""}</td>
-        <td>${priceCell(implied(b.under), b.under)}${bestUnder ? `<span class="flag">Best</span>` : ""}</td>
-        <td>${twoSidedQK(bet, b)}</td>
-    const who = teamName(q) || q.selection || "";
-    const line = q.line != null ? ` <b>${signedLine(q.line)}</b>` : "";
-    return `<div class="best">Best available — ${who}${line} ${odds(q.book)} at ${bookMark(q.source)}</div>`;
-  }
-  const label = win.side === "over" ? "over" : win.side === "under" ? "under" : "";
-  const line = q.line != null ? ` <b>${lineTxt(q.line)}</b>` : "";
-  const side = label ? `${label}${line} ` : "";
-  return `<div class="best">Best available — ${side}${odds(q.book)} at ${bookMark(q.source)}</div>`;
-}
-
 function titleOf(bet) {
   const row = bet.pick;
   const market = marketName(row);
@@ -981,17 +874,6 @@ function titleOf(bet) {
   };
 }
 
-function card(bet) {
-  const title = titleOf(bet);
-  const win = winningSide(bet);
-  const spread = isSpread(bet);
-  const covers = spread && bet.mean != null && bet.line != null && (Number(bet.mean) + Number(bet.line) > 0);
-  const side = spread
-    ? (covers ? "COVER" : "NO COVER")
-    : (win.side || bet.side || "over").toUpperCase();
-  const ev = win.quote && win.quote.ev != null ? win.quote.ev : bet.ev;
-  const value = ev != null && ev > 0;
-  const lineLbl = bet.line != null
 function defaultStd(mean) {
   return Math.max(2.0, 1.7 + 0.95 * Math.sqrt(Math.abs(Number(mean) || 0)));
 }
@@ -1006,6 +888,7 @@ function fairProbAtLine(mean, line, side, spread) {
   if (mean == null || line == null || !Number.isFinite(Number(mean)) || !Number.isFinite(Number(line))) return null;
   const std = defaultStd(mean);
   let p;
+  // mean is already oriented to the posted selection for spreads (team margin).
   if (spread) p = 1 - normalCdf(-Number(line), mean, std);
   else if (side === "under") p = normalCdf(Number(line), mean, std);
   else p = 1 - normalCdf(Number(line), mean, std);
@@ -1013,32 +896,36 @@ function fairProbAtLine(mean, line, side, spread) {
   return Math.min(Math.max(p, 0.01), 0.99);
 }
 function flatBet(bet) {
-  const win = winningSide(bet);
-  const quote = win.quote || bet.pick || {};
+  const quote = bet.pick || {};
   const spread = isSpread(bet);
   const title = titleOf(bet);
-  const covers = spread && bet.mean != null && bet.line != null && (Number(bet.mean) + Number(bet.line) > 0);
   const side = spread
-    ? (covers ? "cover" : "no cover")
-    : (win.side || sideOf(quote) || bet.side || "");
-  const ev = quote.ev != null ? quote.ev : bet.ev;
+    ? (teamName(quote) || spreadSeat(quote) || "")
+    : (sideOf(quote) || bet.side || "");
   const lineNum = bet.line != null ? Number(bet.line) : (quote.line != null ? Number(quote.line) : null);
-  const postedLine = spread && quote.line != null ? Number(quote.line) : lineNum;
+  const postedLine = quote.line != null ? Number(quote.line) : lineNum;
   const lineTxtVal = postedLine == null
     ? "—"
     : (spread ? signedLine(postedLine) : lineTxt(postedLine));
   let modelProb = quote.model_prob != null
     ? quote.model_prob
     : fairProbAtLine(bet.mean, postedLine, side, spread);
-  if (modelProb != null && spread && side === "no cover" && quote.model_prob == null) {
-    modelProb = 1 - modelProb;
-  }
   const alt = isAlt(bet) || Boolean(quote.alt);
-  let labsProb = alt ? null : fairProbAtLine(bet.labs, postedLine, side, spread);
-  if (labsProb != null && spread && side === "no cover") labsProb = 1 - labsProb;
-  const modelPrice = modelProb != null ? (quote.model_odds != null ? quote.model_odds : americanFromProb(modelProb)) : null;
+  const labsProb = alt ? null : (
+    quote.labs_mean != null
+      ? fairProbAtLine(quote.labs_mean, postedLine, side, spread)
+      : fairProbAtLine(bet.labs, postedLine, side, spread)
+  );
+  const modelPrice = modelProb != null
+    ? (quote.model_odds != null ? quote.model_odds : americanFromProb(modelProb))
+    : null;
   const labsPrice = labsProb != null ? americanFromProb(labsProb) : null;
   const bookPrice = quote.book;
+  let ev = quote.ev != null ? quote.ev : bet.ev;
+  if (ev == null && modelProb != null && bookPrice != null) {
+    const dec = Number(bookPrice) > 0 ? 1 + Number(bookPrice) / 100 : 1 + 100 / Math.abs(Number(bookPrice));
+    ev = modelProb * dec - 1;
+  }
   const qk = (modelProb != null && bookPrice != null) ? quarterKelly(modelProb, bookPrice) : null;
   return {
     bet,
@@ -1163,6 +1050,12 @@ function render() {
       render();
     };
   });
+}
+
+$("q").oninput = () => { state.q = $("q").value; render(); };
+
+async function load() {
+  $("table").innerHTML = `<div class="empty">Loading the board…</div>`;
   try {
     TEAM_COLORS = await (await fetch("static/team_colors.json")).json();
   } catch (err) {
@@ -1170,19 +1063,13 @@ function render() {
   }
   const response = await fetch("edges.json");
   state.book = await response.json();
+  const n = (state.book.rows || []).length;
+  $("status").textContent = state.book.error
+    ? state.book.error
+    : `${n} prices · ${(state.book.games || []).length} games`;
   render();
 }
-$("refresh").onclick = async () => {
-  $("refresh").disabled = true;
-  $("refresh").textContent = "Refreshing…";
-  $("status").textContent = "Pulling PrizePicks, Kalshi, Polymarket, Underdog, Novig, Onyx, Pick6…";
-  try {
-    throw new Error("Live refresh runs on the local desk");
-    const body = await response.json();
-    state.book = body;
-    render();
-    const n = (body.rows || []).length;
-    $("status").textContent = body.error
+
 if (CBB_STATIC) {
   const refresh = $("refresh");
   if (refresh) refresh.remove();
@@ -1208,3 +1095,7 @@ if (CBB_STATIC) {
     }
   };
 }
+load();
+</script>
+</body>
+</html>
