@@ -1752,6 +1752,15 @@ function flatBet(bet) {
     : (isProbProjection(quote) && l5 >= 0 && l5 <= 1.0001
       ? Math.round(l5 * 100) + "%"
       : (Math.abs(l5) >= 100 ? l5.toFixed(0) : l5.toFixed(1)));
+  const histRaw = quote.hist_line != null ? Number(quote.hist_line) : (bet.hist_line != null ? Number(bet.hist_line) : null);
+  const hist = Number.isFinite(histRaw) ? histRaw : null;
+  const histN = quote.hist_line_n != null ? Number(quote.hist_line_n) : (bet.hist_line_n != null ? Number(bet.hist_line_n) : null);
+  const histTxt = hist == null
+    ? ""
+    : `${Math.abs(hist) >= 100 ? hist.toFixed(0) : hist.toFixed(1)}${histN ? `<small class="muted"> n${Math.round(histN)}</small>` : ""}`;
+  const zRaw = quote.line_z != null ? Number(quote.line_z) : (bet.line_z != null ? Number(bet.line_z) : null);
+  const z = Number.isFinite(zRaw) ? zRaw : null;
+  const zTxt = z == null ? "" : (z > 0 ? "+" : "") + z.toFixed(2);
   // Expected ROI per unit staked (Prop Pricing Model): P(side) × decimal − 1.
   let roi = quote.ev != null ? quote.ev : bet.ev;
   if (roi == null && modelProb != null && bookPrice != null) {
@@ -1770,6 +1779,10 @@ function flatBet(bet) {
     sideTxt: side ? String(side).replace(/_/g, " ") : "",
     line: postedLine,
     lineTxt: lineTxtVal,
+    hist,
+    histTxt,
+    z,
+    zTxt,
     proj: proj.value,
     projTxt: proj.text,
     l5,
@@ -1805,6 +1818,8 @@ const SORT_COLS = [
   ["name", "Market"],
   ["side", "Side"],
   ["line", "Line"],
+  ["hist", "Hist Line"],
+  ["z", "Z"],
   ["proj", "Proj"],
   ["l5", "L5 Avg"],
   ["sim", "Sim"],
@@ -1822,7 +1837,7 @@ function sortValue(row, key) {
   if (key === "name") return `${row.name} ${row.market}`.toLowerCase();
   if (key === "side") return String(row.side || "").toLowerCase();
   if (key === "book") return String(row.book || "").toLowerCase();
-  if (key === "line" || key === "proj" || key === "l5" || key === "model" || key === "sim" || key === "sharp" || key === "miya" || key === "labs" || key === "fair" || key === "odds" || key === "roi" || key === "ev" || key === "qk") {
+  if (key === "line" || key === "hist" || key === "z" || key === "proj" || key === "l5" || key === "model" || key === "sim" || key === "sharp" || key === "miya" || key === "labs" || key === "fair" || key === "odds" || key === "roi" || key === "ev" || key === "qk") {
     const n = Number(row[key === "ev" ? "roi" : key]);
     return Number.isFinite(n) ? n : (state.sortDir === "asc" ? Infinity : -Infinity);
   }
@@ -1854,7 +1869,11 @@ function sortHeader(key, label) {
         ? ` title="Model projection (sim mean): points, yards, TDs, or anytime %"`
         : (key === "l5"
           ? ` title="Last 5 games average of the actual result for this market"`
-          : "")));
+          : (key === "hist"
+            ? ` title="Average historical posted/closing line from The Odds API + desk snapshots"`
+            : (key === "z"
+              ? ` title="Z-score of the current line vs the historical line sample: (line − mean) / sd"`
+              : "")))));
   return `<th class="${key === "game" || key === "name" ? "left " : ""}${active ? "active" : ""}" data-sort="${key}"${tip}>${label}<span class="arrow">${arrow}</span></th>`;
 }
 
@@ -1911,6 +1930,8 @@ function tableFor(list) {
         <td class="left"><div class="cell-main">${row.icon}<div><b>${row.name}</b><span>${row.market}</span></div></div></td>
         <td>${row.sideTxt}</td>
         <td>${row.lineTxt}</td>
+        <td>${row.histTxt || ""}</td>
+        <td class="${row.z == null ? "" : (row.z > 1 ? "ev" : (row.z < -1 ? "ev neg" : ""))}">${row.zTxt || ""}</td>
         <td>${row.projTxt || ""}</td>
         <td>${row.l5Txt || ""}</td>
         <td>${row.simTxt}</td>
