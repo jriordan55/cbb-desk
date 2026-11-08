@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>CBB Trading Desk</title>
+<title>Jon's Trading Desk</title>
 <style>
   :root {
     --navy: #001a4d;
@@ -76,6 +76,14 @@
     font: inherit;
   }
   #q { width: 220px; }
+  select.market-filter {
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    padding: 7px 10px;
+    font: inherit;
+    max-width: 280px;
+  }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .chip {
     border: 1px solid var(--line);
@@ -86,6 +94,7 @@
     cursor: pointer;
   }
   .chip.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .chip .book-inline { color: inherit; font-weight: 600; }
   .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: calc(100% - 110px); }
   aside {
     background: var(--card);
@@ -94,7 +103,7 @@
   }
   .game {
     display: grid;
-    grid-template-columns: 28px 1fr 28px auto;
+    grid-template-columns: 28px 1fr 28px auto auto;
     gap: 8px;
     align-items: center;
     width: 100%;
@@ -150,6 +159,7 @@
   .empty { padding: 48px 20px; text-align: center; color: var(--muted); }
   .ev { color: var(--up); font-weight: 700; font-variant-numeric: tabular-nums; }
   .ev.neg { color: var(--down); }
+  .src { color: var(--muted); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
   .book-logo {
     width: 16px;
     height: 16px;
@@ -206,13 +216,239 @@
     vertical-align: middle;
     white-space: nowrap;
   }
+  .pair {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+    line-height: 1.15;
+  }
+  .pair .px { font-weight: 700; }
+  .pair .pc {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .pair .pj {
+    color: var(--navy);
+    font-size: 10px;
+    font-weight: 700;
+  }
   .board td.left { white-space: normal; }
   .board tr:hover td { background: #f7f9fb; }
   .board tr.clear td { background: #f3faf5; }
   .board tr.clear:hover td { background: #eaf6ee; }
+  .board tr[data-key] { cursor: pointer; }
+  .board tr.open td { background: #eef3f8; }
+  .board tr.book-row td {
+    background: #f4f7fb;
+    text-align: left;
+    white-space: normal;
+  }
+  .book-panel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 2px 4px 6px;
+  }
+  .book-quote {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #fff;
+    border: 1px solid var(--line);
+    padding: 6px 10px;
+  }
+  .book-quote b { font-variant-numeric: tabular-nums; min-width: 42px; text-align: right; }
+  .book-quote span { color: var(--muted); }
   .cell-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .cell-main b { display: block; font-size: 13px; }
   .cell-main span { display: block; color: var(--muted); font-size: 11px; }
+  .box-link {
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--navy);
+    font: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 7px;
+    cursor: pointer;
+  }
+  .box-link:hover { background: #eef3fb; }
+  .scoreboard .box-link { margin-left: 8px; }
+  .modal {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 36px 16px;
+    background: rgba(16, 19, 24, 0.45);
+    overflow: auto;
+  }
+  .modal.open { display: flex; }
+  .modal-card {
+    position: relative;
+    width: min(1120px, 100%);
+    background: #fff;
+    border: 1px solid var(--line);
+    box-shadow: 0 16px 40px rgba(0, 26, 77, 0.18);
+  }
+  .box-x {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--navy);
+    font: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+  .box-banner {
+    display: grid;
+    grid-template-columns: 1fr minmax(220px, auto) 1fr;
+    align-items: start;
+    gap: 18px;
+    height: auto;
+    padding: 28px 48px 18px;
+    background: #fff;
+    color: var(--ink);
+    border-bottom: 1px solid var(--line);
+    white-space: normal;
+  }
+  .box-id {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+    min-width: 0;
+  }
+  .box-id .logo, .box-id img {
+    width: 52px;
+    height: 52px;
+    max-width: 52px;
+    max-height: 52px;
+  }
+  .box-id b { font-size: 18px; letter-spacing: 0.01em; }
+  .box-id i {
+    display: block;
+    width: 36px;
+    height: 3px;
+    margin-top: 2px;
+  }
+  .box-scoreline { text-align: center; min-width: 200px; }
+  .box-scoreline small {
+    display: block;
+    letter-spacing: 0.16em;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .box-scoreline b {
+    display: block;
+    margin: 6px 0 4px;
+    font-size: 32px;
+    color: var(--navy);
+    letter-spacing: 0.03em;
+    font-variant-numeric: tabular-nums;
+  }
+  .box-scoreline span { color: var(--muted); font-size: 12px; }
+  .box-meta {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    background: #f4f6f8;
+    color: var(--navy);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .box-cols { display: grid; grid-template-columns: 1fr 1fr; }
+  .box-col { padding: 14px 18px 18px; min-width: 0; }
+  .box-col + .box-col { border-left: 1px solid var(--line); }
+  .box-col h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 14px;
+  }
+  .box-col h3 .logo, .box-col h3 img {
+    width: 18px;
+    height: 18px;
+    max-width: 18px;
+    max-height: 18px;
+  }
+  .box-col .est { margin: 2px 0 8px; color: var(--muted); font-size: 11px; }
+  .box-table { width: 100%; border-collapse: collapse; }
+  .box-table th, .box-table td {
+    padding: 7px 6px;
+    text-align: right;
+    border-bottom: 1px solid #eef1f4;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .box-table th {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 700;
+  }
+  .box-table th.left, .box-table td.left { text-align: left; font-weight: 600; }
+  .box-table td.pts { font-weight: 800; }
+  .box-injuries {
+    margin: 0 18px 16px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fbfcfe;
+  }
+  .box-injuries h4 {
+    margin: 0 0 6px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .box-injuries ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+  }
+  .box-injuries li { font-size: 12px; color: var(--ink); }
+  .box-injuries b { font-weight: 700; }
+  .box-injuries .tag {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: #fde8e8;
+    color: #9b1c1c;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  @media (max-width: 760px) {
+    .box-banner, .box-cols { grid-template-columns: 1fr; }
+    .box-col + .box-col { border-left: 0; border-top: 1px solid var(--line); }
+    .box-meta { flex-wrap: wrap; gap: 10px 18px; }
+  }
   .muted { color: var(--muted); }
   @media (max-width: 760px) {
     .layout { grid-template-columns: 1fr; }
@@ -223,7 +459,7 @@
 </head>
 <body>
 <header>
-  <div class="brand"><b>CBB TRADING DESK</b></div>
+  <div class="brand"><b>JON'S TRADING DESK</b></div>
   <div class="actions">
     <span class="status" id="status"></span>
     
@@ -231,7 +467,13 @@
 </header>
 <div class="toolbar">
   <input id="q" placeholder="Search team, player, market" />
+  <div class="chips" id="leagues"></div>
   <div class="chips" id="markets"></div>
+  <div class="chips" id="periods"></div>
+  <select class="market-filter" id="marketName" aria-label="Market"></select>
+  <div class="chips" id="sides"></div>
+  <div class="chips" id="lines"></div>
+  <div class="chips" id="books"></div>
   <div class="chips" id="views"></div>
 </div>
 <div class="layout">
@@ -241,26 +483,58 @@
     <div id="table"></div>
   </main>
 </div>
+<div id="boxModal" class="modal">
+  <div class="modal-card" role="dialog" aria-label="Sim box score">
+    <button type="button" class="box-x" id="boxClose">Close</button>
+    <div id="boxBody"></div>
+  </div>
+</div>
 <script>
 const $ = (id) => document.getElementById(id);
 const CBB_STATIC = true;
 const state = {
-  book: null, view: "edges", game: "", market: "all", player: "", q: "", clearOnly: false,
-  sortKey: "ev", sortDir: "desc",
+  book: null, view: "edges", game: "", league: "cbb", market: "all", marketName: "all",
+  period: "all", side: "all", line: "all", sportsbook: "all", player: "", q: "", clearOnly: false, openKey: "",
+  sortKey: "roi", sortDir: "desc",
 };
 let TEAM_COLORS = {};
+const LEAGUE_CHIPS = [
+  ["all", "All leagues"],
+  ["cbb", "CBB"],
+  ["cfb", "CFB"],
+  ["nfl", "NFL"],
+  ["nba", "NBA"],
+];
 const MARKET_CHIPS = [
-  ["all", "All"],
+  ["all", "All types"],
   ["ml", "ML"],
   ["spread", "Spread"],
   ["total", "Total"],
   ["prop", "Players"],
 ];
+// Period buckets that exist across sports: FG all leagues; 1H basketball+football; 1Q football+NBA.
+const PERIOD_CHIPS = [
+  ["all", "All periods"],
+  ["fg", "Full Game"],
+  ["h1", "1H"],
+  ["q1", "1Q"],
+];
+const SIDE_CHIPS = [
+  ["all", "O/U"],
+  ["over", "Over"],
+  ["under", "Under"],
+];
+const LINE_CHIPS = [
+  ["all", "All lines"],
+  ["main", "Main lines"],
+];
 const VIEW_CHIPS = [
   ["posted", "All posted"],
   ["clear", "Clear edges"],
 ];
-// Clear edges = model + CBB Labs agree on the side, and model EV/edge >= 20%.
+// Shown prices: Sim + Sharp (Miya/Sasser/nfelo) on ML/spread/total mains; Labs on props.
+// No-vig fair is the average of each book's devigged price.
+// Expected ROI = P(win) × decimal payout − 1 (Prop Pricing Model), using Sharp / Labs / sim.
 const BOOKS = {
   prizepicks: { name: "PrizePicks", src: "static/books/prizepicks.png" },
   kalshi: { name: "Kalshi", src: "static/books/kalshi.png" },
@@ -269,6 +543,7 @@ const BOOKS = {
   polymarket: { name: "Polymarket", src: "static/books/polymarket.png" },
   novig: { name: "Novig", src: "static/books/novig.png" },
   pick6: { name: "Pick6", src: "static/books/pick6.svg?v=2" },
+  fliff: { name: "Fliff", src: "static/books/fliff.svg?v=2" },
 };
 const MARKET_LABELS = {
   pra: "Points + Rebounds + Assists",
@@ -300,24 +575,96 @@ const MARKET_LABELS = {
   total: "Total",
   "team total": "Team Total",
   "1st half total": "1st Half Total",
+  "2nd half total": "2nd Half Total",
   "1st half moneyline": "1st Half Moneyline",
+  "2nd half moneyline": "2nd Half Moneyline",
   "1st half spread": "1st Half Spread",
+  "2nd half spread": "2nd Half Spread",
+  "1st quarter total": "1st Quarter Total",
+  "2nd quarter total": "2nd Quarter Total",
+  "3rd quarter total": "3rd Quarter Total",
+  "4th quarter total": "4th Quarter Total",
+  "1st quarter spread": "1st Quarter Spread",
+  "2nd quarter spread": "2nd Quarter Spread",
+  "3rd quarter spread": "3rd Quarter Spread",
+  "4th quarter spread": "4th Quarter Spread",
+  "1st half team total": "1st Half Team Total",
+  "2nd half team total": "2nd Half Team Total",
+  // Football player props — keep anytime vs passing TD unambiguous (esp. QBs).
+  anytime_td: "Anytime TD",
+  "anytime td": "Anytime TD",
+  "anytime tds": "Anytime TD",
+  "anytime touchdowns": "Anytime TD",
+  "anytime touchdown": "Anytime TD",
+  "anytime touchdown scorer": "Anytime TD",
+  touchdowns: "Anytime TD",
+  passing_touchdowns: "Passing Touchdowns",
+  "passing touchdowns": "Passing Touchdowns",
+  "pass tds": "Passing Touchdowns",
+  "pass td": "Passing Touchdowns",
+  rushing_touchdowns: "Rushing Touchdowns",
+  "rushing touchdowns": "Rushing Touchdowns",
+  "rush tds": "Rushing Touchdowns",
+  receiving_touchdowns: "Receiving Touchdowns",
+  "receiving touchdowns": "Receiving Touchdowns",
+  "rec tds": "Receiving Touchdowns",
+  passing_yards: "Passing Yards",
+  "passing yards": "Passing Yards",
+  rushing_yards: "Rushing Yards",
+  "rushing yards": "Rushing Yards",
+  receiving_yards: "Receiving Yards",
+  "receiving yards": "Receiving Yards",
+  receptions: "Receptions",
+  rush_rec_yards: "Rush + Rec Yards",
+  "rush rec yards": "Rush + Rec Yards",
+  passing_rushing_yards: "Pass + Rush Yards",
+  "passing rushing yards": "Pass + Rush Yards",
+};
+
+const PROP_STAT_LABELS = {
+  anytime_td: "Anytime TD",
+  passing_touchdowns: "Passing Touchdowns",
+  rushing_touchdowns: "Rushing Touchdowns",
+  receiving_touchdowns: "Receiving Touchdowns",
+  passing_yards: "Passing Yards",
+  rush_attempts: "Rush Attempts",
+  rushing_yards: "Rushing Yards",
+  receiving_yards: "Receiving Yards",
+  receptions: "Receptions",
+  pass_attempts: "Pass Attempts",
+  completions: "Completions",
+  rush_rec_yards: "Rush + Rec Yards",
+  passing_rushing_yards: "Pass + Rush Yards",
+  points: "Points",
+  rebounds: "Rebounds",
+  assists: "Assists",
+  threes: "Three-Pointers Made",
+  steals: "Steals",
+  blocks: "Blocked Shots",
+  turnovers: "Turnovers",
+  pra: "Points + Rebounds + Assists",
+  points_rebounds: "Points + Rebounds",
+  points_assists: "Points + Assists",
+  rebounds_assists: "Rebounds + Assists",
+  double_double: "Double-Double",
 };
 
 function odds(value) {
-  if (value == null || value === "") return "—";
+  if (value == null || value === "") return "";
   const n = Number(value);
-  if (!Number.isFinite(n)) return "—";
+  if (!Number.isFinite(n)) return "";
   return n > 0 ? "+" + Math.round(n) : String(Math.round(n));
 }
 function pct(value) {
-  if (value == null || value === "") return "—";
+  if (value == null || value === "") return "";
   const n = 100 * Number(value);
   return (n > 0 ? "+" : "") + n.toFixed(1) + "%";
 }
 function fairPct(value) {
-  if (value == null || value === "") return "—";
-  return (100 * Number(value)).toFixed(1) + "%";
+  if (value == null || value === "") return "";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "";
+  return (100 * n).toFixed(1) + "%";
 }
 function implied(price) {
   const n = Number(price);
@@ -329,8 +676,46 @@ function americanFromProb(prob) {
   if (prob >= 0.5) return Math.round(-100 * prob / (1 - prob));
   return Math.round(100 * (1 - prob) / prob);
 }
-function priceCell(prob, price) {
-  return `<span class="pair"><span>${fairPct(prob)}</span><span>${odds(price)}</span></span>`;
+function projLabel(value, { spread = false } = {}) {
+  if (value == null || value === "") return "";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "";
+  return spread ? signedLine(n) : (Math.abs(n - Math.round(n)) < 1e-9 ? String(Math.round(n * 10) / 10) : n.toFixed(1));
+}
+function isProbProjection(quote) {
+  if (!quote) return false;
+  if (quote.kind === "ml") return true;
+  const blob = `${quote.market || ""} ${quote.market_code || ""}`.toLowerCase();
+  return /anytime|first.?td|double.?double|win prob/.test(blob);
+}
+function projectionOf(quote, bet) {
+  // Props: Labs usage projection first (same Proj number CBB already shows).
+  // Then sim mean, then model mean.
+  const raw = (quote.kind === "prop" && quote.labs_mean != null)
+    ? quote.labs_mean
+    : (quote.sim_mean != null
+      ? quote.sim_mean
+      : (quote.model_mean != null ? quote.model_mean : (bet && bet.mean != null ? bet.mean : null)));
+  if (raw == null || raw === "") return { value: null, text: "" };
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return { value: null, text: "" };
+  if (isProbProjection(quote) && n >= 0 && n <= 1.0001) {
+    return { value: n, text: (100 * n).toFixed(1) + "%" };
+  }
+  if (quote.kind === "spread") return { value: n, text: signedLine(n) };
+  return { value: n, text: projLabel(n) };
+}
+function priceCell(prob, price, proj, opts = {}) {
+  const px = odds(price);
+  const pc = fairPct(prob);
+  const pj = projLabel(proj, opts);
+  if (!px && !pc && !pj) return "";
+  const bits = [];
+  if (px) bits.push(`<span class="px">${px}</span>`);
+  if (pc) bits.push(`<span class="pc">${pc}</span>`);
+  if (pj) bits.push(`<span class="pj">${pj}</span>`);
+  if (bits.length === 1 && px && !pc && !pj) return px;
+  return `<span class="pair">${bits.join("")}</span>`;
 }
 const BANKROLL = 1000;
 const KELLY_FRAC = 0.25;
@@ -353,7 +738,7 @@ function quarterKelly(prob, price, bankroll = BANKROLL) {
 }
 function qkTxt(prob, price) {
   const stake = quarterKelly(prob, price);
-  if (stake == null) return "—";
+  if (stake == null) return "";
   if (stake < 1) return "<$1";
   return "$" + Math.round(stake);
 }
@@ -364,20 +749,19 @@ function isSpread(bet) {
   return (bet.pick && bet.pick.kind) === "spread";
 }
 function isAlt(bet) {
-  return Boolean((bet.pick && bet.pick.alt) || (bet.quotes || []).some((row) => row.alt));
+  return Boolean(isAltLine(bet.pick) || (bet.quotes || []).some((row) => isAltLine(row)));
 }
 function sanePrice(price, source, row) {
   if (price == null || price === "") return false;
   const n = Number(price);
   if (!Number.isFinite(n) || n === 0) return false;
-  if (source === "onyx") {
-    // still drop absurd longshot ML quotes that disagree with the model
-  } else if (Math.abs(n) > 2500) {
-    return false;
+  if (source === "onyx" || source === "fliff") {
+    return true;
   }
+  if (Math.abs(n) > 2500) return false;
   // Prediction-market MLs often price 10-point dogs at +1500/+2000 (longshot
-  // bias). Hide those so the board isn't topped by fake 300% EV.
-  if (row && row.kind === "ml" && row.model_prob != null && n >= 700) {
+  // bias). Hide those so the board isn't topped by fake 300% ROI.
+  if (row && (source === "kalshi" || source === "novig" || source === "polymarket") && row.kind === "ml" && row.model_prob != null && n >= 700) {
     const bp = implied(n);
     if (bp != null && bp < Number(row.model_prob) * 0.55) return false;
   }
@@ -465,18 +849,225 @@ function bookMark(source) {
   const img = book.src ? `<img class="book-logo" src="${book.src}" alt="${book.name}" />` : "";
   return `<span class="book-inline">${img}${book.name}</span>`;
 }
-function marketName(row) {
-  const raw = String((row && row.market) || "").replace(/\s+·\s+(alt|demon|goblin).*$/i, "").trim();
+function propPeriod(row) {
+  const text = `${(row && row.market_code) || ""} ${(row && row.market) || ""}`.toLowerCase();
+  if (/\b1st_quarter\b|1st quarter|first quarter|\bq1\b|\b1q\b/.test(text)) return "q1";
+  if (/\b2nd_quarter\b|2nd quarter|second quarter|\bq2\b|\b2q\b/.test(text)) return "q2";
+  if (/\b3rd_quarter\b|3rd quarter|third quarter|\bq3\b|\b3q\b/.test(text)) return "q3";
+  if (/\b4th_quarter\b|4th quarter|fourth quarter|\bq4\b|\b4q\b/.test(text)) return "q4";
+  if (/\b1st_half\b|1st half|first half|\bh1\b|\b1h\b/.test(text)) return "h1";
+  if (/\b2nd_half\b|2nd half|second half|\bh2\b|\b2h\b/.test(text)) return "h2";
+  return "fg";
+}
+function periodChipItems() {
+  // Full Game + 1H apply to every league; 1Q applies to football + NBA (not CBB).
+  const league = state.league || "cbb";
+  const allowQ1 = league === "all" || league === "nfl" || league === "cfb" || league === "nba";
+  const items = PERIOD_CHIPS.filter(([value]) => value !== "q1" || allowQ1);
+  if (state.period === "q1" && !allowQ1) state.period = "all";
+  return items;
+}
+function baseVisibleIgnoringPeriod(row) {
+  const day = String(row.start || "").slice(0, 10);
+  if (day && day < todayISO()) return false;
+  if (tipoffPassed(row.start)) return false;
+  if (state.league !== "all" && rowLeague(row) !== state.league) return false;
+  if (isFootballLateQuarter(row)) return false;
+  if (!hasProjection(row)) return false;
+  if (row.kind === "other" && row.source !== "onyx" && row.source !== "fliff") return false;
+  if (row.book == null || row.book === "" || !sanePrice(row.book, row.source, row)) return false;
+  if (state.sportsbook !== "all" && row.source !== state.sportsbook) return false;
+  return true;
+}
+function propStatFamily(row) {
+  /** Canonical prop family so books with different labels/codes collapse. */
+  const code = String((row && row.market_code) || "").toLowerCase().replace(/^\d+(st|nd|rd|th)_/, "");
+  const market = String((row && row.market) || "").toLowerCase();
+  const text = `${code} ${market}`.replace(/_/g, " ");
+  // Scorer specials stay distinct from anytime / passing.
+  if (/\bfirst td\b|first touchdown|1st touchdown|first_td|1st_td/.test(text)) return "first_td";
+  if (/\blast td\b|last touchdown|last_td/.test(text)) return "last_td";
+  if (/pass.?rush.?rec|pass rush rec/.test(text)) return "pass_rush_rec_tds";
+  if (/rush.?rec.?td|rush rec td/.test(text)) return "rush_rec_td";
+  if (/passing touchdown|pass tds?\b|pass_td|player_pass_tds|player_passing_touchdowns/.test(text)) {
+    return "passing_touchdowns";
+  }
+  if (/rushing touchdown|rush tds?\b|rush_td|player_rush_tds/.test(text)) return "rushing_touchdowns";
+  if (/receiving touchdown|rec tds?\b|rec_td|player_rec_tds/.test(text)) return "receiving_touchdowns";
+  if (
+    /anytime|touchdown scorer|player_touchdowns|player_anytime|anytime_touchdown/.test(text)
+    && !/first|last|next drive|first drive|next play/.test(text)
+  ) {
+    return "anytime_td";
+  }
+  const codeMap = {
+    player_anytime_td: "anytime_td",
+    player_anytime_tds: "anytime_td",
+    player_anytime_touchdowns: "anytime_td",
+    player_touchdowns: "anytime_td",
+    anytime_touchdown_scorer: "anytime_td",
+    player_passing_touchdowns: "passing_touchdowns",
+    player_pass_tds: "passing_touchdowns",
+    player_pass_td: "passing_touchdowns",
+    player_rushing_touchdowns: "rushing_touchdowns",
+    player_rush_tds: "rushing_touchdowns",
+    player_receiving_touchdowns: "receiving_touchdowns",
+    player_rec_tds: "receiving_touchdowns",
+    player_passing_yards: "passing_yards",
+    player_pass_yards: "passing_yards",
+    player_pass_yds: "passing_yards",
+    player_rushing_yards: "rushing_yards",
+    player_rush_yards: "rushing_yards",
+    player_receiving_yards: "receiving_yards",
+    player_rec_yards: "receiving_yards",
+    player_receptions: "receptions",
+    player_rush_rec_yards: "rush_rec_yards",
+    player_passing_rushing_yards: "passing_rushing_yards",
+    player_points: "points",
+    player_rebounds: "rebounds",
+    player_assists: "assists",
+    player_threes: "threes",
+    player_steals: "steals",
+    player_blocks: "blocks",
+    player_turnovers: "turnovers",
+    player_pra: "pra",
+  };
+  if (codeMap[code]) return codeMap[code];
+  const stripped = code.replace(/^player_/, "");
+  if (PROP_STAT_LABELS[stripped]) return stripped;
+  return stripped || market.replace(/\s+/g, "_") || "prop";
+}
+function propMarketLabel(row) {
+  const period = propPeriod(row);
+  const family = propStatFamily(row);
+  let base = PROP_STAT_LABELS[family]
+    || MARKET_LABELS[family]
+    || MARKET_LABELS[family.replace(/_/g, " ")]
+    || family.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+  // Keep anytime vs passing explicit for QBs (and everyone else).
+  if (family === "anytime_td") base = "Anytime TD";
+  if (family === "passing_touchdowns") base = "Passing Touchdowns";
+  if (period === "q1") base = `1Q ${base}`;
+  else if (period === "q2") base = `2Q ${base}`;
+  else if (period === "q3") base = `3Q ${base}`;
+  else if (period === "q4") base = `4Q ${base}`;
+  else if (period === "h1") base = `1H ${base}`;
+  else if (period === "h2") base = `2H ${base}`;
+  return base;
+}
+function marketBaseName(row) {
+  if (row && row.kind === "prop") return propMarketLabel(row);
+  const raw = String((row && row.market) || "").replace(/\s+·\s+(alt|demon|goblin|main|alternate).*$/i, "").trim();
   const key = raw.toLowerCase().replace(/_/g, " ");
   const compact = key.replace(/\s+/g, " ");
   const mapped = MARKET_LABELS[compact] || MARKET_LABELS[compact.replace(/ /g, "_")] || MARKET_LABELS[raw.toLowerCase()];
-  let name = mapped || raw.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
-  if (row && row.alt) name += " · Alternate";
+  return mapped || raw.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+function periodMarketKey(row) {
+  const gid = String((row && (row.sim_id || row.game)) || "");
+  const kind = String((row && row.kind) || "");
+  const market = String((row && row.market) || "").toLowerCase();
+  const code = String((row && row.market_code) || "").toLowerCase();
+  const text = `${market} ${code}`;
+  let period = "fg";
+  if (/\b1st_quarter\b|1st quarter|first quarter|\bq1\b|\b1q\b/.test(text)) period = "q1";
+  else if (/\b2nd_quarter\b|2nd quarter|second quarter|\bq2\b|\b2q\b/.test(text)) period = "q2";
+  else if (/\b3rd_quarter\b|3rd quarter|third quarter|\bq3\b|\b3q\b/.test(text)) period = "q3";
+  else if (/\b4th_quarter\b|4th quarter|fourth quarter|\bq4\b|\b4q\b/.test(text)) period = "q4";
+  else if (/\b1st_half\b|1st half|first half|\bh1\b|\b1h\b/.test(text)) period = "h1";
+  else if (/\b2nd_half\b|2nd half|second half|\bh2\b|\b2h\b/.test(text)) period = "h2";
+  else if (text.includes("quarter")) period = "q";
+  if (kind === "prop") {
+    const family = propStatFamily(row);
+    const p = propPeriod(row);
+    return `${gid}|prop|${String((row && row.player) || "").toLowerCase()}|${p}|${family}`;
+  }
+  if (market.includes("team") || code.includes("team_total")) {
+    const team = teamName(row).toLowerCase();
+    return `${gid}|${period}|team_total|${team}`;
+  }
+  return `${gid}|${period}|${kind}|${code || market}`;
+}
+let _mainLineCache = null;
+function rebuildMainLines(rows) {
+  const votes = new Map();
+  (rows || []).forEach((row) => {
+    if (!row || row.line == null) return;
+    if (row.kind !== "spread" && row.kind !== "total" && row.kind !== "prop") return;
+    const key = periodMarketKey(row);
+    const raw = Number(row.line);
+    if (!Number.isFinite(raw)) return;
+    // Spreads vote on absolute line so home/away mirror the same main.
+    const lineKey = (row.kind === "spread" ? Math.abs(raw) : raw).toFixed(1);
+    const bucket = votes.get(key) || new Map();
+    let weight = 1;
+    if (row.is_main === true || row.is_main === "true" || row.is_main === 1 || row.is_main === "1") weight += 5;
+    if (row.alt === true || row.alt === "true" || row.alt === 1 || row.alt === "1" || row.is_main === false || row.is_main === "false") weight -= 3;
+    if (row.source === "onyx" || row.source === "fliff" || row.source === "novig") weight += 2;
+    if (row.kind === "prop" && row.model_mean != null && Number.isFinite(Number(row.model_mean))) {
+      const dist = Math.abs(raw - Number(row.model_mean));
+      if (dist <= 0.6) weight += 3;
+      else if (dist <= 1.6) weight += 1;
+      else weight -= 1;
+    }
+    bucket.set(lineKey, (bucket.get(lineKey) || 0) + weight);
+    votes.set(key, bucket);
+  });
+  const mains = new Map();
+  votes.forEach((bucket, key) => {
+    let best = null;
+    let bestScore = -Infinity;
+    bucket.forEach((score, lineKey) => {
+      if (score > bestScore) {
+        bestScore = score;
+        best = Number(lineKey);
+      }
+    });
+    if (best != null) mains.set(key, best);
+  });
+  _mainLineCache = mains;
+  return mains;
+}
+function mainLineValue(row) {
+  if (!_mainLineCache) rebuildMainLines(((state.book || {}).rows) || []);
+  return _mainLineCache.get(periodMarketKey(row));
+}
+function isAltLine(row) {
+  if (!row) return false;
+  if (row.alt === true || row.alt === "true" || row.alt === 1 || row.alt === "1") return true;
+  if (row.is_main === false || row.is_main === "false" || row.is_main === 0 || row.is_main === "0") return true;
+  if (row.is_main === true || row.is_main === "true" || row.is_main === 1 || row.is_main === "1") return false;
+  if (row.kind === "ml") return false;
+  if (row.line == null) return false;
+  const main = mainLineValue(row);
+  if (main == null) return false;
+  const value = row.kind === "spread" ? Math.abs(Number(row.line)) : Number(row.line);
+  if (!Number.isFinite(value)) return false;
+  return Math.abs(value - main) > 0.05;
+}
+function marketName(row) {
+  let name = marketBaseName(row);
+  if (!row) return name;
+  if (row.kind === "ml") return name;
+  if (row.kind === "spread" || row.kind === "total" || row.kind === "prop") {
+    name += isAltLine(row) ? " · Alt" : " · Main";
+  } else if (row.alt) {
+    name += " · Alt";
+  }
   return name;
 }
 function hasProjection(row) {
+  // Any league with a priced model / Labs / sim projection counts.
+  // Book-only rows still show when they have a posted price (legacy books).
+  if (row.model_prob != null || row.model_mean != null || row.labs_mean != null || row.sim_mean != null) {
+    return true;
+  }
   if ((row.source === "onyx" || row.source === "pick6") && row.sim_id) return true;
-  return Boolean(row.sim_id) && (row.model_prob != null || row.model_mean != null);
+  if (row.sim_id && (row.model_prob != null || row.model_mean != null)) return true;
+  return row.book != null || row.american != null;
+}
+function rowLeague(row) {
+  return String((row && row.league) || "cbb").toLowerCase();
 }
 function sideOf(row) {
   if (row.side === "over" || row.side === "under") return row.side;
@@ -488,17 +1079,129 @@ function sideOf(row) {
 function betKey(row) {
   const gid = row.sim_id || row.game;
   const line = row.line == null ? "" : (row.kind === "spread" ? Math.abs(Number(row.line)).toFixed(1) : Number(row.line).toFixed(1));
-  if (row.kind === "prop") return ["prop", gid, String(row.player || "").toLowerCase(), row.market, line].join("|");
-  if (row.kind === "total") return ["total", gid, row.market, line].join("|");
-  if (row.kind === "spread") return ["spread", gid, row.market, line].join("|");
-  if (row.kind === "ml") return ["ml", gid, row.market, String(row.selection || "").toLowerCase()].join("|");
-  return ["other", gid, row.market, row.selection, line].join("|");
+  const side = sideOf(row);
+  const team = teamName(row).toLowerCase();
+  // One row per side so both teams / over-under stay visible.
+  // Spreads key on home/away seat so "UConn" and "Connecticut" collapse.
+  // Canonical family+period so "Anytime Td" / "Anytime Touchdowns" / codes collapse
+  // to one best-book row; other books stay in the click-to-expand panel.
+  if (row.kind === "prop") {
+    return ["prop", gid, String(row.player || "").toLowerCase(), propPeriod(row), propStatFamily(row), line, side].join("|");
+  }
+  if (row.kind === "total") {
+    const teamTot = String(row.market || "").toLowerCase().includes("team");
+    const seat = teamTot ? (spreadSeat(row) || team) : "";
+    return ["total", gid, row.market, line, side || "?", seat].join("|");
+  }
+  if (row.kind === "spread") return ["spread", gid, row.market, line, spreadSeat(row) || team].join("|");
+  if (row.kind === "ml") return ["ml", gid, row.market, spreadSeat(Object.assign({}, row, { line: null })) || String(row.selection || "").toLowerCase()].join("|");
+  return ["other", gid, row.market, row.selection, line, side].join("|");
 }
 
 function chips(id, items, key) {
   $(id).innerHTML = items.map(([value, label]) =>
     `<button class="chip${state[key] === value ? " active" : ""}" data-k="${key}" data-v="${value}">${label}</button>`
   ).join("");
+  $(id).querySelectorAll(".chip").forEach((btn) => btn.onclick = () => {
+    const key = btn.dataset.k;
+    const value = btn.dataset.v;
+    state[key] = value;
+    if (key === "market" && value !== "all") state.marketName = "all";
+    if (key === "period") state.marketName = "all";
+    if (key === "league") {
+      state.game = "";
+      state.marketName = "all";
+      state.period = "all";
+      state.player = "";
+      load();
+      return;
+    }
+    render();
+  });
+}
+
+const MARKET_NAME_ORDER = [
+  "Moneyline", "Spread", "Total", "Team Total",
+  "1st Half Moneyline", "1st Half Spread", "1st Half Total", "1st Half Team Total",
+  "2nd Half Moneyline", "2nd Half Spread", "2nd Half Total",
+  "Points", "Rebounds", "Assists", "Three-Pointers Made", "Steals", "Blocked Shots", "Turnovers",
+  "Points + Rebounds + Assists", "Points + Rebounds", "Points + Assists", "Rebounds + Assists",
+  "Double-Double", "First Rebounder", "First Assister",
+  "Anytime TD", "Passing Touchdowns", "Rushing Touchdowns", "Receiving Touchdowns",
+  "Passing Yards", "Rushing Yards", "Receiving Yards", "Receptions",
+  "Rush + Rec Yards", "Pass + Rush Yards",
+];
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+}
+
+function marketKey(row) {
+  return marketName(row);
+}
+
+function isFootballLateQuarter(row) {
+  const league = rowLeague(row);
+  if (league !== "cfb" && league !== "nfl") return false;
+  const text = `${row.market_code || ""} ${row.market || ""}`.toLowerCase();
+  if (/\b2nd_quarter\b|\b3rd_quarter\b|\b4th_quarter\b/.test(text)) return true;
+  if (/\b2nd quarter\b|\b3rd quarter\b|\b4th quarter\b/.test(text)) return true;
+  if (/(^|[_\s])(2q|3q|4q|q2|q3|q4)($|[_\s])/.test(text)) return true;
+  return false;
+}
+
+function baseVisible(row) {
+  if (!baseVisibleIgnoringPeriod(row)) return false;
+  if (state.period !== "all" && propPeriod(row) !== state.period) return false;
+  return true;
+}
+
+function fillMarketFilter() {
+  rebuildMainLines(((state.book && state.book.rows) || []));
+  const counts = new Map();
+  ((state.book && state.book.rows) || []).forEach((row) => {
+    if (!baseVisible(row)) return;
+    const name = marketKey(row);
+    if (!name) return;
+    counts.set(name, (counts.get(name) || 0) + 1);
+  });
+  if (state.marketName !== "all" && !counts.has(state.marketName)) state.marketName = "all";
+  const rank = new Map(MARKET_NAME_ORDER.map((name, index) => [name, index]));
+  const names = [...counts.keys()].sort((a, b) => {
+    const aBase = a.replace(/\s+·\s+(Main|Alt)$/i, "");
+    const bBase = b.replace(/\s+·\s+(Main|Alt)$/i, "");
+    const left = rank.has(aBase) ? rank.get(aBase) : 1000;
+    const right = rank.has(bBase) ? rank.get(bBase) : 1000;
+    if (left !== right) return left - right;
+    const aAlt = /·\s*Alt$/i.test(a) ? 1 : 0;
+    const bAlt = /·\s*Alt$/i.test(b) ? 1 : 0;
+    if (aAlt !== bAlt) return aAlt - bAlt;
+    return (counts.get(b) - counts.get(a)) || a.localeCompare(b);
+  });
+  const el = $("marketName");
+  el.innerHTML = [["all", "All markets"]].concat(names.map((name) => [name, name])).map(([value, label]) =>
+    `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`
+  ).join("");
+  el.value = state.marketName;
+}
+
+function bookChipItems() {
+  const present = new Set();
+  ((state.book && state.book.rows) || []).forEach((row) => {
+    if (row.source) present.add(row.source);
+  });
+  const items = [["all", "All books"]];
+  const seen = new Set();
+  Object.keys(BOOKS).forEach((key) => {
+    if (!present.has(key)) return;
+    items.push([key, bookMark(key)]);
+    seen.add(key);
+  });
+  [...present].sort().forEach((key) => {
+    if (!seen.has(key)) items.push([key, bookMark(key)]);
+  });
+  if (state.sportsbook !== "all" && !present.has(state.sportsbook)) state.sportsbook = "all";
+  return items;
 }
 
 function tipoffPassed(start) {
@@ -510,18 +1213,23 @@ function tipoffPassed(start) {
 
 function matchingRows(scoped) {
   const book = state.book || { rows: [] };
+  rebuildMainLines(book.rows || []);
   const q = state.q.trim().toLowerCase();
   return (book.rows || []).filter((row) => {
-    const day = String(row.start || "").slice(0, 10);
-    if (day && day < todayISO()) return false;
-    if (tipoffPassed(row.start)) return false;
-    if ((row.kind === "spread" || row.kind === "total") && (row.alt || row.is_main === false || row.is_main === "false")) return false;
-    if (!hasProjection(row)) return false;
-    if (scoped && state.game && row.game !== state.game && row.sim_id !== state.game) return false;
-    if (row.kind === "other" && row.source !== "onyx") return false;
+    if (!baseVisible(row)) return false;
+    if (scoped && state.game) {
+      const gid = row.sim_id || `${rowLeague(row)}|${row.game}`;
+      if (row.game !== state.game && row.sim_id !== state.game && gid !== state.game) return false;
+    }
     if (state.market !== "all" && row.kind !== state.market) return false;
+    if (state.marketName !== "all" && marketKey(row) !== state.marketName) return false;
+    if (state.side === "over" || state.side === "under") {
+      if (sideOf(row) !== state.side) return false;
+    }
+    // 1Q: mains only — never show alt ladders for first-quarter markets.
+    if (propPeriod(row) === "q1" && isAltLine(row)) return false;
+    if (state.line === "main" && isAltLine(row)) return false;
     if (state.player && (row.player || "").toLowerCase() !== state.player.toLowerCase()) return false;
-    if (row.book != null && !sanePrice(row.book, row.source, row)) return false;
     if (q && !(row.game + " " + row.selection + " " + row.market + " " + (row.player || "")).toLowerCase().includes(q)) return false;
     return true;
   });
@@ -538,7 +1246,13 @@ function groupedBets(rows) {
   return [...groups.values()]
     .filter((bet) => !state.clearOnly || bet.quotes.some((row) => row.clear))
     .map(decorate)
-    .sort((a, b) => (Number(b.pick && b.pick.clear) - Number(a.pick && a.pick.clear)) || ((b.ev ?? -9) - (a.ev ?? -9)));
+    .filter((bet) => (bet.quotes || []).length > 0 && bet.pick && bet.pick.book != null)
+    .sort((a, b) => {
+      const aAlt = isAltLine(a.pick) ? 1 : 0;
+      const bAlt = isAltLine(b.pick) ? 1 : 0;
+      if (aAlt !== bAlt) return aAlt - bAlt;
+      return (Number(b.pick && b.pick.clear) - Number(a.pick && a.pick.clear)) || ((b.ev ?? -9) - (a.ev ?? -9));
+    });
 }
 
 function bets() {
@@ -555,7 +1269,7 @@ function bestQuote(quotes, pred) {
 }
 
 function decorate(bet) {
-  const quotes = (bet.quotes || []).filter((row) => row.book == null || sanePrice(row.book, row.source, row));
+  const quotes = (bet.quotes || []).filter((row) => row.book != null && sanePrice(row.book, row.source, row));
   const pick = quotes.find((row) => row.clear && row.ev != null) || quotes.find((row) => row.ev != null) || quotes[0];
   const over = bestQuote(quotes, (row) => sideOf(row) === "over");
   const under = bestQuote(quotes, (row) => sideOf(row) === "under");
@@ -625,38 +1339,55 @@ function renderGames() {
     total += 1;
   });
   const shown = games.filter((g) => {
-    if (g.sim_away == null) return false;
+    if (state.league !== "all" && String(g.league || "cbb").toLowerCase() !== state.league) return false;
     const day = String(g.start || "").slice(0, 10);
     if (day && day < todayISO()) return false;
     if (tipoffPassed(g.start)) return false;
     const id = g.id || g.game;
-    return (counts[g.id] || counts[g.game] || 0) > 0 || state.game === id;
+    // CBB modeled slate can appear even before prices; other leagues need posted prices.
+    const hasPrices = (counts[g.id] || counts[g.game] || 0) > 0;
+    if (String(g.league || "cbb").toLowerCase() !== "cbb" && !hasPrices && state.game !== id) return false;
+    if (String(g.league || "cbb").toLowerCase() === "cbb" && g.sim_away == null && !hasPrices && state.game !== id) return false;
+    return hasPrices || state.game === id || (String(g.league || "cbb").toLowerCase() === "cbb" && g.sim_away != null);
   });
   $("games").innerHTML = `<button class="game${state.game === "" ? " active" : ""}" data-game="">
-      <span></span><div><b>All games</b><small>${state.clearOnly ? "Labs agree · 20%+ edge" : "Posted markets"}</small></div><span></span>
+      <span></span><div><b>All games</b><small>${state.clearOnly ? "Fair edge · 20%+" : "Posted markets"}</small></div><span></span><span></span>
       <span class="count">${total}</span>
     </button>` + shown.map((g) => {
     const id = g.id || g.game;
     const n = counts[g.id] || counts[g.game] || 0;
-    return `<button class="game${state.game === id ? " active" : ""}" data-game="${id}">
+    const leagueTag = String(g.league || "cbb").toUpperCase();
+    const score = g.sim_away != null ? ` · ${g.sim_away}–${g.sim_home}` : "";
+    const box = g.sim_away != null
+      ? `<button type="button" class="box-link" data-box="${escapeHtml(id)}">Box</button>`
+      : `<span></span>`;
+    return `<div class="game${state.game === id ? " active" : ""}" data-game="${escapeHtml(id)}">
       ${logo(g.away_logo, g.away)}
-      <div><b>${g.away} @ ${g.home}</b><small>${g.start || ""}${g.sim_away != null ? " · " + g.sim_away + "–" + g.sim_home : ""}</small></div>
+      <div><b>${g.away} @ ${g.home}</b><small>${leagueTag} · ${g.start || ""}${score}</small></div>
       ${logo(g.home_logo, g.home)}
+      ${box}
       <span class="count">${n}</span>
-    </button>`;
+    </div>`;
   }).join("");
-  $("games").querySelectorAll(".game").forEach((btn) => btn.onclick = () => {
+  $("games").querySelectorAll(".game").forEach((btn) => btn.onclick = (event) => {
+    if (event.target.closest("[data-box]")) return;
     state.game = btn.dataset.game;
     render();
+  });
+  $("games").querySelectorAll("[data-box]").forEach((btn) => btn.onclick = (event) => {
+    event.stopPropagation();
+    openBox(btn.dataset.box);
   });
 }
 
 function scoreboard(game) {
   if (!game) return "";
+  const id = game.id || game.game;
   return `<section class="scoreboard">
     <div class="team">${logo(game.away_logo, game.away)}${game.away}</div>
     <div class="mid"><b>${game.sim_away != null ? Number(game.sim_away).toFixed(1) + " – " + Number(game.sim_home).toFixed(1) : "VS"}</b>model</div>
     <div class="team">${game.home}${logo(game.home_logo, game.home)}</div>
+    <button type="button" class="box-link" data-box="${escapeHtml(id)}">Box score</button>
   </section>`;
 }
 
@@ -675,9 +1406,36 @@ function hexDist(a, b) {
   const left = parts(a), right = parts(b);
   return Math.hypot(left[0] - right[0], left[1] - right[1], left[2] - right[2]);
 }
+function teamNorm(name) {
+  const raw = String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (!raw) return "";
+  const compact = raw.replace(/\s+/g, "");
+  const aliases = {
+    uconn: "connecticut",
+    connecticut: "connecticut",
+    pitt: "pittsburgh",
+    pittsburgh: "pittsburgh",
+    miami: "miami",
+    "miamifl": "miami",
+    "miamioh": "miami oh",
+    "usc": "southern california",
+    "southerncalifornia": "southern california",
+    "olemiss": "mississippi",
+    mississippi: "mississippi",
+    "lsu": "louisiana state",
+    "louisianastate": "louisiana state",
+    "vcu": "virginia commonwealth",
+    "unlv": "nevada las vegas",
+    "smu": "southern methodist",
+    "byu": "brigham young",
+    "ucf": "central florida",
+    "centralflorida": "central florida",
+  };
+  return aliases[compact] || aliases[raw] || compact;
+}
 function sameTeam(a, b) {
-  const left = String(a || "").toLowerCase();
-  const right = String(b || "").toLowerCase();
+  const left = teamNorm(a);
+  const right = teamNorm(b);
   return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
 }
 function chartColors(bet) {
@@ -773,11 +1531,19 @@ function caption(bet) {
     const coverN = coverP == null ? null : Math.round(coverP * sims);
     const who = teamName(bet.pick) || "this side";
     if (coverN == null) return "";
-    return `<div class="caption">${coverN} of ${sims} simulated games ${who} covers ${signedLine(bet.line)} · model margin ${signedLine(bet.mean)}</div>`;
+    const src = fairSource(bet);
+    return `<div class="caption">${src} ${who} covers ${signedLine(bet.line)} in ${coverN} of ${sims} · margin ${signedLine(bet.mean)}</div>`;
   }
   const overN = bet.overProb == null ? null : Math.round(bet.overProb * sims);
-  if (overN == null) return `<div class="caption">Dashed is my projection</div>`;
-  return `<div class="caption">${overN} of ${sims} simulated games over ${lineTxt(bet.line)} · ${sims - overN} under · dashed is my projection ${lineTxt(bet.mean)}</div>`;
+  if (overN == null) return `<div class="caption">Dashed is the fair projection</div>`;
+  return `<div class="caption">${fairSource(bet)} over ${lineTxt(bet.line)} in ${overN} of ${sims} · under in ${sims - overN} · dashed is ${lineTxt(bet.mean)}</div>`;
+}
+
+function fairSource(bet) {
+  const src = bet.pick && bet.pick.price_src;
+  if (src === "labs") return "Labs prices";
+  if (src === "evanmiya" || src === "sasser" || src === "nfelo") return "Sharp prices";
+  return "Fair price";
 }
 
 function sideProbs(bet) {
@@ -865,10 +1631,33 @@ function titleOf(bet) {
       tag: market,
     };
   }
+  if (row.kind === "spread") {
+    const seat = spreadSeat(row);
+    const team = seat === "home" ? (row.home || teamName(row))
+      : seat === "away" ? (row.away || teamName(row))
+      : (teamName(row) || row.selection || "");
+    return {
+      icon: logo(seat === "home" ? row.home_logo : row.away_logo, team),
+      name: team,
+      sub: `${market} · ${row.game}`,
+      tag: market,
+    };
+  }
+  if (row.kind === "total") {
+    const teamTotal = String(market).toLowerCase().includes("team");
+    const team = teamName(row) || String(row.selection || "").replace(/over|under/ig, "").trim();
+    const homePick = sameTeam(team, row.home);
+    return {
+      icon: teamTotal ? logo(homePick ? row.home_logo : row.away_logo, team) : "",
+      name: teamTotal ? team : (sideOf(row) === "under" ? "Under" : "Over"),
+      sub: `${market} · ${row.game}`,
+      tag: market,
+    };
+  }
   const homePick = String(row.selection || "").toLowerCase().includes(String(row.home || "").toLowerCase());
   return {
     icon: logo(homePick ? row.home_logo : row.away_logo, row.selection),
-    name: row.kind === "total" && !String(market).toLowerCase().includes("team") ? row.game : row.selection.replace(/over|under/ig, "").trim() || row.game,
+    name: row.selection.replace(/over|under/ig, "").trim() || row.game,
     sub: `${market} · ${row.game}`,
     tag: market,
   };
@@ -905,26 +1694,69 @@ function flatBet(bet) {
   const lineNum = bet.line != null ? Number(bet.line) : (quote.line != null ? Number(quote.line) : null);
   const postedLine = quote.line != null ? Number(quote.line) : lineNum;
   const lineTxtVal = postedLine == null
-    ? "—"
+    ? ""
     : (spread ? signedLine(postedLine) : lineTxt(postedLine));
   let modelProb = quote.model_prob != null
     ? quote.model_prob
     : fairProbAtLine(bet.mean, postedLine, side, spread);
   const alt = isAlt(bet) || Boolean(quote.alt);
-  const labsProb = alt ? null : (
-    quote.labs_mean != null
-      ? fairProbAtLine(quote.labs_mean, postedLine, side, spread)
-      : fairProbAtLine(bet.labs, postedLine, side, spread)
-  );
+  // Prop Labs / sim odds are priced server-side with skew (NegBin/Poisson).
+  // Do not rebuild them with the normal fairProbAtLine helper — that made absurd alts.
+  const labsProb = (quote.kind === "prop")
+    ? (quote.price_src === "labs" ? quote.model_prob : null)
+    : (alt ? null : (
+      quote.labs_mean != null
+        ? fairProbAtLine(quote.labs_mean, postedLine, side, spread)
+        : fairProbAtLine(bet.labs, postedLine, side, spread)
+    ));
   const modelPrice = modelProb != null
     ? (quote.model_odds != null ? quote.model_odds : americanFromProb(modelProb))
     : null;
-  const labsPrice = labsProb != null ? americanFromProb(labsProb) : null;
+  const propLabs = quote.kind === "prop" && (quote.labs_mean != null || quote.price_src === "labs");
+  const labsPrice = !propLabs
+    ? null
+    : (quote.price_src === "labs" && quote.model_odds != null
+      ? quote.model_odds
+      : (labsProb != null ? americanFromProb(labsProb) : null));
+  const simPrice = quote.sim_odds != null ? quote.sim_odds : null;
+  const marketName = String(quote.market || bet.market || "").toLowerCase();
+  const halfMarket = /half|1st|2nd|quarter/.test(marketName);
+  const gameMarket = quote.kind === "ml" || quote.kind === "spread" || quote.kind === "total";
+  const sharpOdds = quote.sharp_odds != null ? quote.sharp_odds : quote.miya_odds;
+  const sharpProb = quote.sharp_prob != null ? quote.sharp_prob : quote.miya_prob;
+  const sharpPrice = gameMarket ? sharpOdds : null;
+  // Full-game Sharp projection: spread margin, game total, or team total.
+  let sharpProj = null;
+  if (!halfMarket && (quote.sharp_mean != null || quote.price_src === "evanmiya" || quote.price_src === "sasser" || quote.price_src === "nfelo")) {
+    if (quote.kind === "spread" || quote.kind === "total") {
+      sharpProj = quote.sharp_mean != null ? quote.sharp_mean : quote.model_mean;
+    }
+  }
+  const labsProj = propLabs
+    ? (quote.labs_mean != null ? quote.labs_mean : (quote.price_src === "labs" ? quote.model_mean : null))
+    : null;
+  const labsProbVal = propLabs ? (quote.price_src === "labs" ? quote.model_prob : labsProb) : null;
+  // Sim column keeps the Monte Carlo mean even when Labs owns Proj / model_mean.
+  let simProj = quote.sim_mean != null ? quote.sim_mean : null;
+  if (simProj == null && quote.price_src === "sim" && quote.model_mean != null) {
+    simProj = quote.model_mean;
+  }
+  if (quote.kind === "spread" && simProj == null) simProj = null;
+  const fairPrice = quote.fair_odds != null ? quote.fair_odds : null;
   const bookPrice = quote.book;
-  let ev = quote.ev != null ? quote.ev : bet.ev;
-  if (ev == null && modelProb != null && bookPrice != null) {
+  const proj = projectionOf(quote, bet);
+  const l5Raw = quote.l5_avg != null ? Number(quote.l5_avg) : (bet.l5_avg != null ? Number(bet.l5_avg) : null);
+  const l5 = Number.isFinite(l5Raw) ? l5Raw : null;
+  const l5Txt = l5 == null
+    ? ""
+    : (isProbProjection(quote) && l5 >= 0 && l5 <= 1.0001
+      ? Math.round(l5 * 100) + "%"
+      : (Math.abs(l5) >= 100 ? l5.toFixed(0) : l5.toFixed(1)));
+  // Expected ROI per unit staked (Prop Pricing Model): P(side) × decimal − 1.
+  let roi = quote.ev != null ? quote.ev : bet.ev;
+  if (roi == null && modelProb != null && bookPrice != null) {
     const dec = Number(bookPrice) > 0 ? 1 + Number(bookPrice) / 100 : 1 + 100 / Math.abs(Number(bookPrice));
-    ev = modelProb * dec - 1;
+    roi = modelProb * dec - 1;
   }
   const qk = (modelProb != null && bookPrice != null) ? quarterKelly(modelProb, bookPrice) : null;
   return {
@@ -935,21 +1767,34 @@ function flatBet(bet) {
     name: title.name || "",
     icon: title.icon || "",
     side,
-    sideTxt: side ? String(side).replace(/_/g, " ") : "—",
+    sideTxt: side ? String(side).replace(/_/g, " ") : "",
     line: postedLine,
     lineTxt: lineTxtVal,
+    proj: proj.value,
+    projTxt: proj.text,
+    l5,
+    l5Txt,
     model: modelProb,
-    modelTxt: odds(modelPrice),
-    labs: labsProb,
-    labsTxt: odds(labsPrice),
+    modelTxt: priceCell(modelProb, modelPrice),
+    sim: quote.sim_prob,
+    simTxt: priceCell(quote.sim_prob, simPrice, simProj, { spread: quote.kind === "spread" }),
+    miya: sharpProb,
+    miyaTxt: priceCell(sharpProb, sharpPrice, sharpProj, { spread: quote.kind === "spread" }),
+    sharp: sharpProb,
+    sharpTxt: priceCell(sharpProb, sharpPrice, sharpProj, { spread: quote.kind === "spread" }),
+    labs: labsProbVal,
+    labsTxt: priceCell(labsProbVal, labsPrice, labsProj),
+    fair: quote.fair_prob,
+    fairTxt: priceCell(quote.fair_prob, fairPrice),
     book: quote.source || "",
-    bookTxt: quote.source ? bookMark(quote.source) : "—",
+    bookTxt: quote.source ? bookMark(quote.source) : "",
     odds: bookPrice,
-    oddsTxt: odds(bookPrice),
-    ev,
-    evTxt: pct(ev),
+    oddsTxt: priceCell(implied(bookPrice), bookPrice),
+    roi,
+    ev: roi,
+    roiTxt: pct(roi),
     qk,
-    qkTxt: qk == null ? "—" : (qk < 1 ? "<$1" : "$" + Math.round(qk)),
+    qkTxt: qk == null ? "" : (qk < 1 ? "<$1" : "$" + Math.round(qk)),
     start: quote.start || "",
     kind: quote.kind || "",
   };
@@ -960,11 +1805,15 @@ const SORT_COLS = [
   ["name", "Market"],
   ["side", "Side"],
   ["line", "Line"],
-  ["model", "Model"],
-  ["labs", "CBB Labs"],
+  ["proj", "Proj"],
+  ["l5", "L5 Avg"],
+  ["sim", "Sim"],
+  ["sharp", "Sharp"],
+  ["labs", "Labs"],
+  ["fair", "No-vig fair"],
   ["book", "Book"],
   ["odds", "Odds"],
-  ["ev", "EV"],
+  ["roi", "Exp ROI"],
   ["qk", "QK"],
 ];
 
@@ -973,8 +1822,8 @@ function sortValue(row, key) {
   if (key === "name") return `${row.name} ${row.market}`.toLowerCase();
   if (key === "side") return String(row.side || "").toLowerCase();
   if (key === "book") return String(row.book || "").toLowerCase();
-  if (key === "line" || key === "model" || key === "labs" || key === "odds" || key === "ev" || key === "qk") {
-    const n = Number(row[key]);
+  if (key === "line" || key === "proj" || key === "l5" || key === "model" || key === "sim" || key === "sharp" || key === "miya" || key === "labs" || key === "fair" || key === "odds" || key === "roi" || key === "ev" || key === "qk") {
+    const n = Number(row[key === "ev" ? "roi" : key]);
     return Number.isFinite(n) ? n : (state.sortDir === "asc" ? Infinity : -Infinity);
   }
   return "";
@@ -982,24 +1831,71 @@ function sortValue(row, key) {
 
 function sortedRows(list) {
   const rows = list.map(flatBet);
-  const key = state.sortKey || "ev";
+  const key = state.sortKey === "ev" ? "roi" : (state.sortKey || "roi");
   const dir = state.sortDir === "asc" ? 1 : -1;
   rows.sort((a, b) => {
     const av = sortValue(a, key);
     const bv = sortValue(b, key);
     if (av < bv) return -1 * dir;
     if (av > bv) return 1 * dir;
-    return (b.ev ?? -9) - (a.ev ?? -9);
+    return (b.roi ?? -9) - (a.roi ?? -9);
   });
   return rows;
 }
 
 function sortHeader(key, label) {
-  const active = state.sortKey === key;
+  const active = state.sortKey === key || (key === "roi" && state.sortKey === "ev");
   const arrow = !active ? "" : (state.sortDir === "asc" ? "▲" : "▼");
-  return `<th class="${key === "game" || key === "name" ? "left " : ""}${active ? "active" : ""}" data-sort="${key}">${label}<span class="arrow">${arrow}</span></th>`;
+  const tip = key === "fair"
+    ? ` title="Average price after each book's vig is removed"`
+    : (key === "roi"
+      ? ` title="Expected ROI per unit staked = win% × decimal payout − 1"`
+      : (key === "proj"
+        ? ` title="Model projection (sim mean): points, yards, TDs, or anytime %"`
+        : (key === "l5"
+          ? ` title="Last 5 games average of the actual result for this market"`
+          : "")));
+  return `<th class="${key === "game" || key === "name" ? "left " : ""}${active ? "active" : ""}" data-sort="${key}"${tip}>${label}<span class="arrow">${arrow}</span></th>`;
 }
 
+function quoteSideTxt(row) {
+  if (row.kind === "spread") return teamName(row) || "";
+  return sideOf(row) || String(row.side || "").replace(/_/g, " ");
+}
+function bookQuoteKey(row) {
+  const line = row.line == null ? "" : (row.kind === "spread" ? Math.abs(Number(row.line)).toFixed(1) : Number(row.line).toFixed(1));
+  return [row.source || "", row.kind || "", quoteSideTxt(row).toLowerCase(), line].join("|");
+}
+function betterBookQuote(a, b) {
+  if (Boolean(a.locked) !== Boolean(b.locked)) return a.locked ? b : a;
+  const ae = a.ev == null ? -9 : Number(a.ev);
+  const be = b.ev == null ? -9 : Number(b.ev);
+  if (ae !== be) return ae > be ? a : b;
+  const ap = Number(a.book);
+  const bp = Number(b.book);
+  if ((a.model_prob != null ? Number(a.model_prob) : 0.5) < 0.5) return ap >= bp ? a : b;
+  return ap <= bp ? a : b;
+}
+function bookPanel(bet) {
+  const best = new Map();
+  (bet.quotes || []).forEach((row) => {
+    if (row.book == null || !sanePrice(row.book, row.source, row)) return;
+    const key = bookQuoteKey(row);
+    const prev = best.get(key);
+    best.set(key, prev ? betterBookQuote(prev, row) : row);
+  });
+  const ordered = [...best.values()].sort((a, b) => {
+    const book = String(a.source || "").localeCompare(String(b.source || ""));
+    if (book) return book;
+    return String(quoteSideTxt(a)).localeCompare(String(quoteSideTxt(b)));
+  });
+  if (!ordered.length) return "";
+  return `<tr class="book-row"><td colspan="${SORT_COLS.length}"><div class="book-panel">${ordered.map((row) => {
+    const line = row.line == null ? "" : (row.kind === "spread" ? signedLine(row.line) : lineTxt(row.line));
+    const side = quoteSideTxt(row);
+    return `<div class="book-quote">${bookMark(row.source)}<span>${escapeHtml(side)}${line ? " " + line : ""}</span><b>${odds(row.book)}</b></div>`;
+  }).join("")}</div></td></tr>`;
+}
 function tableFor(list) {
   if (!list.length) return `<div class="empty">No posted markets in this view.</div>`;
   const rows = sortedRows(list);
@@ -1007,25 +1903,194 @@ function tableFor(list) {
     ${SORT_COLS.map(([key, label]) => sortHeader(key, label)).join("")}
   </tr></thead><tbody>
     ${rows.map((row) => {
-      const evClass = row.ev == null ? "muted" : (row.ev > 0 ? "ev" : "ev neg");
-      return `<tr class="${row.clear ? "clear" : ""}">
-        <td class="left">${row.game || "—"}</td>
-        <td class="left"><div class="cell-main">${row.icon}<div><b>${row.name}</b><span>${row.market}${row.bet.pick && row.bet.pick.alt ? " · Alt" : ""}</span></div></div></td>
+      const roiClass = row.roi == null ? "muted" : (row.roi > 0 ? "ev" : "ev neg");
+      const key = encodeURIComponent(row.bet.key || "");
+      const open = state.openKey === key;
+      return `<tr class="${row.clear ? "clear" : ""} ${open ? "open" : ""}" data-key="${key}">
+        <td class="left">${row.game || ""}</td>
+        <td class="left"><div class="cell-main">${row.icon}<div><b>${row.name}</b><span>${row.market}</span></div></div></td>
         <td>${row.sideTxt}</td>
         <td>${row.lineTxt}</td>
-        <td>${row.modelTxt}</td>
+        <td>${row.projTxt || ""}</td>
+        <td>${row.l5Txt || ""}</td>
+        <td>${row.simTxt}</td>
+        <td>${row.sharpTxt || row.miyaTxt || ""}</td>
         <td>${row.labsTxt}</td>
+        <td>${row.fairTxt}</td>
         <td class="left">${row.bookTxt}</td>
         <td>${row.oddsTxt}</td>
-        <td class="${evClass}">${row.evTxt}</td>
+        <td class="${roiClass}">${row.roiTxt}</td>
         <td>${row.qkTxt}</td>
-      </tr>`;
+      </tr>${open ? bookPanel(row.bet) : ""}`;
     }).join("")}
   </tbody></table></div>`;
 }
 
+const BOX_STATS_BBALL = [
+  ["mpg", "Min"],
+  ["points", "Pts"],
+  ["rebounds", "Reb"],
+  ["assists", "Ast"],
+  ["threes", "3PM"],
+  ["steals", "Stl"],
+  ["turnovers", "TO"],
+];
+const BOX_STATS_CFB = [
+  ["passing_yards", "Pass"],
+  ["rushing_yards", "Rush"],
+  ["receiving_yards", "RecY"],
+  ["receptions", "Rec"],
+  ["passing_touchdowns", "PTD"],
+  ["rushing_touchdowns", "RTD"],
+  ["anytime_td", "aTD"],
+];
+const boxCache = {};
+function boxStatsFor(league) {
+  const lg = String(league || "").toLowerCase();
+  return (lg === "cfb" || lg === "nfl") ? BOX_STATS_CFB : BOX_STATS_BBALL;
+}
+function boxStat(player, key) {
+  if (key === "mpg") return player.mpg;
+  const row = player.stats && player.stats[key];
+  return row ? row.mean : null;
+}
+function boxNum(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(1) : "";
+}
+function boxShort(name) {
+  const parts = String(name || "").split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return name || "";
+  const suffix = /^(jr|sr|ii|iii|iv|v)\.?$/i;
+  const tail = [];
+  while (parts.length > 1 && suffix.test(parts[parts.length - 1])) tail.unshift(parts.pop().replace(/\.$/, ""));
+  const surname = parts.pop();
+  return [parts[0][0] + ".", surname, ...tail].join(" ");
+}
+function boxWhen(desk, game) {
+  const text = String((desk && desk.start) || (game && game.game_date) || "");
+  const day = text.slice(0, 10);
+  if (day.length < 10) return "";
+  const when = new Date(day + "T12:00:00");
+  const pretty = when.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const clock = text.includes("T") ? text.slice(11, 16) : "";
+  return clock && clock !== "00:00" ? `${pretty} · ${clock}` : pretty;
+}
+function boxSpread(home, away, line) {
+  const n = Number(line);
+  if (!Number.isFinite(n)) return "";
+  if (Math.abs(n) < 0.25) return "PK";
+  const favorite = n < 0 ? home : away;
+  return `${favorite} -${Math.abs(n).toFixed(1)}`;
+}
+function boxAccent(desk, side) {
+  const id = desk ? (side === "home" ? desk.home_id : desk.away_id) : "";
+  let color = hexColor(id);
+  const other = hexColor(desk ? (side === "home" ? desk.away_id : desk.home_id) : "");
+  if (color && other && hexDist(color, other) < 50) color = hexColor(id, true) || color;
+  return color || "#001a4d";
+}
+function boxColumn(name, logoSrc, players, accent, league) {
+  const cols = boxStatsFor(league);
+  const rows = players.slice().sort((a, b) => {
+    const aUse = Number(a.mpg);
+    const bUse = Number(b.mpg);
+    if (Number.isFinite(aUse) || Number.isFinite(bUse)) return (bUse || 0) - (aUse || 0);
+    const sum = (p) => cols.reduce((n, [key]) => n + (Number(boxStat(p, key)) || 0), 0);
+    return sum(b) - sum(a);
+  });
+  const highlight = league === "cfb" || league === "nfl" ? "passing_yards" : "points";
+  const body = rows.map((player) => `<tr>
+    <td class="left">${escapeHtml(boxShort(player.player))}</td>
+    ${cols.map(([key]) => {
+      const value = boxNum(boxStat(player, key));
+      return key === highlight
+        ? `<td class="pts" style="color:${accent}">${value}</td>`
+        : `<td>${value}</td>`;
+    }).join("")}
+  </tr>`).join("");
+  return `<section class="box-col">
+    <h3>${logo(logoSrc, name)}${escapeHtml(name)}</h3>
+    <p class="est">Estimated box · this game</p>
+    <table class="box-table">
+      <thead><tr><th class="left">Player</th>${cols.map(([, label]) => `<th>${label}</th>`).join("")}</tr></thead>
+      <tbody>${body || `<tr><td class="left">No projected rotation</td></tr>`}</tbody>
+    </table>
+  </section>`;
+}
+function boxInjuries(injuries, awayName, homeName) {
+  const rows = (injuries || []).slice().sort((a, b) => {
+    const side = String(a.side || "").localeCompare(String(b.side || ""));
+    if (side) return side;
+    return String(a.player || "").localeCompare(String(b.player || ""));
+  });
+  if (!rows.length) return "";
+  return `<div class="box-injuries"><h4>Injuries / outs</h4><ul>${rows.map((row) => {
+    const team = row.side === "home" ? homeName : (row.side === "away" ? awayName : (row.team || ""));
+    const status = String(row.status || "Out");
+    return `<li><b>${escapeHtml(boxShort(row.player))}</b> <span>${escapeHtml(team || "")}</span><span class="tag">${escapeHtml(status)}</span></li>`;
+  }).join("")}</ul></div>`;
+}
+function boxHtml(payload, desk) {
+  const game = (payload && payload.game) || {};
+  const players = (payload && payload.players) || [];
+  const injuries = (payload && payload.injuries) || [];
+  const league = (payload && payload.league) || game.league || (desk && desk.league) || "cbb";
+  const awayName = game.away || (desk && desk.away) || "Away";
+  const homeName = game.home || (desk && desk.home) || "Home";
+  const awayScore = desk && desk.sim_away != null ? desk.sim_away : game.sim_away_pts;
+  const homeScore = desk && desk.sim_home != null ? desk.sim_home : game.sim_home_pts;
+  const injuredKeys = new Set(injuries.map((row) => `${String(row.player || "").toLowerCase()}|${row.side || ""}`));
+  const away = players.filter((player) => player.side === "away" && !injuredKeys.has(`${String(player.player || "").toLowerCase()}|away`));
+  const home = players.filter((player) => player.side === "home" && !injuredKeys.has(`${String(player.player || "").toLowerCase()}|home`));
+  const spread = boxSpread(homeName, awayName, game.fair_home_spread);
+  const total = boxNum(game.fair_total);
+  const poss = boxNum(game.exp_possessions);
+  const meta = [
+    spread,
+    total ? `Total ${total}` : "",
+    poss && league !== "cfb" && league !== "nfl" ? `${poss} possessions` : "",
+  ].filter(Boolean);
+  return `<div class="box-banner">
+      <div class="box-id">${logo(desk && desk.away_logo, awayName)}<b>${escapeHtml(awayName)}</b><i style="background:${boxAccent(desk, "away")}"></i></div>
+      <div class="box-scoreline">
+        <small>Projected score</small>
+        <b>${boxNum(awayScore) || "–"} – ${boxNum(homeScore) || "–"}</b>
+        <span>${escapeHtml(boxWhen(desk, game))}</span>
+      </div>
+      <div class="box-id">${logo(desk && desk.home_logo, homeName)}<b>${escapeHtml(homeName)}</b><i style="background:${boxAccent(desk, "home")}"></i></div>
+    </div>
+    ${meta.length ? `<div class="box-meta">${meta.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
+    ${boxInjuries(injuries, awayName, homeName)}
+    <div class="box-cols">
+      ${boxColumn(awayName, desk && desk.away_logo, away, boxAccent(desk, "away"), league)}
+      ${boxColumn(homeName, desk && desk.home_logo, home, boxAccent(desk, "home"), league)}
+    </div>`;
+}
+async function openBox(id) {
+  const modal = $("boxModal");
+  const desk = ((state.book && state.book.games) || []).find((game) => (game.id || game.game) === id);
+  $("boxBody").innerHTML = `<div class="empty">Loading the sim box score…</div>`;
+  modal.classList.add("open");
+  try {
+    if (!boxCache[id]) {
+      const response = await fetch("/api/game/" + encodeURIComponent(id));
+      if (!response.ok) throw new Error("missing");
+      boxCache[id] = await response.json();
+    }
+    $("boxBody").innerHTML = boxHtml(boxCache[id], desk);
+  } catch (err) {
+    $("boxBody").innerHTML = `<div class="empty">No sim box score for this game.</div>`;
+  }
+}
 function render() {
+  chips("leagues", LEAGUE_CHIPS, "league");
   chips("markets", MARKET_CHIPS, "market");
+  chips("periods", periodChipItems(), "period");
+  fillMarketFilter();
+  chips("sides", SIDE_CHIPS, "side");
+  chips("lines", LINE_CHIPS, "line");
+  chips("books", bookChipItems(), "sportsbook");
   $("views").innerHTML = VIEW_CHIPS.map(([value, label]) =>
     `<button class="chip${(state.clearOnly ? "clear" : "posted") === value ? " active" : ""}" data-clear="${value}">${label}</button>`
   ).join("");
@@ -1038,6 +2103,7 @@ function render() {
   const selected = state.game ? games.find((g) => g.id === state.game || g.game === state.game) : null;
   renderGames();
   $("board").innerHTML = selected ? scoreboard(selected) : "";
+  $("board").querySelectorAll("[data-box]").forEach((btn) => btn.onclick = () => openBox(btn.dataset.box));
   $("table").innerHTML = tableFor(list);
   $("table").querySelectorAll("th[data-sort]").forEach((th) => {
     th.onclick = () => {
@@ -1050,9 +2116,23 @@ function render() {
       render();
     };
   });
+  $("table").querySelectorAll("tr[data-key]").forEach((tr) => {
+    tr.onclick = () => {
+      const key = tr.getAttribute("data-key");
+      state.openKey = state.openKey === key ? "" : key;
+      render();
+    };
+  });
 }
 
 $("q").oninput = () => { state.q = $("q").value; render(); };
+$("boxClose").onclick = () => $("boxModal").classList.remove("open");
+$("boxModal").onclick = (event) => {
+  if (event.target.id === "boxModal") $("boxModal").classList.remove("open");
+};
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") $("boxModal").classList.remove("open");
+});
 
 async function load() {
   $("table").innerHTML = `<div class="empty">Loading the board…</div>`;
@@ -1061,14 +2141,22 @@ async function load() {
   } catch (err) {
     TEAM_COLORS = {};
   }
-  const response = await fetch("edges.json");
+  const league = state.league || "cbb";
+  const response = await fetch(`/api/desk/edges?league=${encodeURIComponent(league)}`);
   state.book = await response.json();
   const n = (state.book.rows || []).length;
+  const tag = league === "all" ? "all leagues" : String(league).toUpperCase();
   $("status").textContent = state.book.error
     ? state.book.error
-    : `${n} prices · ${(state.book.games || []).length} games`;
+    : `${n} prices · ${(state.book.games || []).length} games · ${tag}`;
   render();
 }
+
+$("marketName").onchange = () => {
+  state.marketName = $("marketName").value;
+  if (state.marketName !== "all") state.market = "all";
+  render();
+};
 
 if (CBB_STATIC) {
   const refresh = $("refresh");
