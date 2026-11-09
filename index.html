@@ -169,6 +169,17 @@
     border-radius: 3px;
     vertical-align: middle;
   }
+  .labs-logo {
+    width: 22px;
+    height: 22px;
+    max-width: 22px;
+    max-height: 22px;
+    object-fit: contain;
+    vertical-align: middle;
+    background: #0a0a0a;
+    border-radius: 4px;
+    padding: 1px;
+  }
   .book-inline {
     display: inline-flex;
     align-items: center;
@@ -532,17 +543,12 @@ const VIEW_CHIPS = [
   ["posted", "All posted"],
   ["clear", "Clear edges"],
 ];
-// Shown prices: Sim + Sharp (Miya/Sasser/nfelo) on ML/spread/total mains; Labs on props.
+// Shown prices: Sim on modeled markets; Bettor Odds on main props + full-game ML/spread/total.
 // No-vig fair is the average of each book's devigged price.
-// Expected ROI = P(win) × decimal payout − 1 (Prop Pricing Model), using Sharp / Labs / sim.
+// Expected ROI = P(win) × decimal payout − 1 (Prop Pricing Model).
 const BOOKS = {
-  prizepicks: { name: "PrizePicks", src: "static/books/prizepicks.png" },
-  kalshi: { name: "Kalshi", src: "static/books/kalshi.png" },
-  underdog: { name: "Underdog", src: "static/books/underdog.png" },
+  "4c": { name: "4C Odds", src: "static/books/4c.png" },
   onyx: { name: "Onyx", src: "static/books/onyx.png" },
-  polymarket: { name: "Polymarket", src: "static/books/polymarket.png" },
-  novig: { name: "Novig", src: "static/books/novig.png" },
-  pick6: { name: "Pick6", src: "static/books/pick6.svg?v=2" },
   fliff: { name: "Fliff", src: "static/books/fliff.svg?v=2" },
 };
 const MARKET_LABELS = {
@@ -689,13 +695,14 @@ function isProbProjection(quote) {
   return /anytime|first.?td|double.?double|win prob/.test(blob);
 }
 function projectionOf(quote, bet) {
-  // Props: Labs usage projection first (same Proj number CBB already shows).
-  // Then sim mean, then model mean.
-  const raw = (quote.kind === "prop" && quote.labs_mean != null)
-    ? quote.labs_mean
-    : (quote.sim_mean != null
-      ? quote.sim_mean
-      : (quote.model_mean != null ? quote.model_mean : (bet && bet.mean != null ? bet.mean : null)));
+  // Proj = what the sim priced (period-scaled mean). Labs usage stays in Bettor Odds.
+  const raw = quote.sim_mean != null
+    ? quote.sim_mean
+    : (quote.model_mean != null
+      ? quote.model_mean
+      : (quote.labs_mean != null
+        ? quote.labs_mean
+        : (bet && bet.mean != null ? bet.mean : null)));
   if (raw == null || raw === "") return { value: null, text: "" };
   const n = Number(raw);
   if (!Number.isFinite(n)) return { value: null, text: "" };
@@ -755,16 +762,10 @@ function sanePrice(price, source, row) {
   if (price == null || price === "") return false;
   const n = Number(price);
   if (!Number.isFinite(n) || n === 0) return false;
-  if (source === "onyx" || source === "fliff") {
+  if (source === "4c" || source === "onyx" || source === "fliff") {
     return true;
   }
   if (Math.abs(n) > 2500) return false;
-  // Prediction-market MLs often price 10-point dogs at +1500/+2000 (longshot
-  // bias). Hide those so the board isn't topped by fake 300% ROI.
-  if (row && (source === "kalshi" || source === "novig" || source === "polymarket") && row.kind === "ml" && row.model_prob != null && n >= 700) {
-    const bp = implied(n);
-    if (bp != null && bp < Number(row.model_prob) * 0.55) return false;
-  }
   return true;
 }
 function signedLine(value) {
@@ -873,8 +874,9 @@ function baseVisibleIgnoringPeriod(row) {
   if (tipoffPassed(row.start)) return false;
   if (state.league !== "all" && rowLeague(row) !== state.league) return false;
   if (isFootballLateQuarter(row)) return false;
+  if (isDriveMarket(row)) return false;
   if (!hasProjection(row)) return false;
-  if (row.kind === "other" && row.source !== "onyx" && row.source !== "fliff") return false;
+  if (row.kind === "other" && row.source !== "4c" && row.source !== "onyx" && row.source !== "fliff") return false;
   if (row.book == null || row.book === "" || !sanePrice(row.book, row.source, row)) return false;
   if (state.sportsbook !== "all" && row.source !== state.sportsbook) return false;
   return true;
@@ -1003,7 +1005,7 @@ function rebuildMainLines(rows) {
     let weight = 1;
     if (row.is_main === true || row.is_main === "true" || row.is_main === 1 || row.is_main === "1") weight += 5;
     if (row.alt === true || row.alt === "true" || row.alt === 1 || row.alt === "1" || row.is_main === false || row.is_main === "false") weight -= 3;
-    if (row.source === "onyx" || row.source === "fliff" || row.source === "novig") weight += 2;
+    if (row.source === "4c" || row.source === "onyx" || row.source === "fliff") weight += 2;
     if (row.kind === "prop" && row.model_mean != null && Number.isFinite(Number(row.model_mean))) {
       const dist = Math.abs(raw - Number(row.model_mean));
       if (dist <= 0.6) weight += 3;
@@ -1034,16 +1036,19 @@ function mainLineValue(row) {
 }
 function isAltLine(row) {
   if (!row) return false;
+  if (row.kind === "ml") return false;
+  if (row.line == null) return false;
+  // Consensus main across books wins over a single book's is_main flag
+  // (PrizePicks often tags a goblin/wrong-period 10.5 as main).
+  const main = mainLineValue(row);
+  if (main != null) {
+    const value = row.kind === "spread" ? Math.abs(Number(row.line)) : Number(row.line);
+    if (Number.isFinite(value)) return Math.abs(value - main) > 0.05;
+  }
   if (row.alt === true || row.alt === "true" || row.alt === 1 || row.alt === "1") return true;
   if (row.is_main === false || row.is_main === "false" || row.is_main === 0 || row.is_main === "0") return true;
   if (row.is_main === true || row.is_main === "true" || row.is_main === 1 || row.is_main === "1") return false;
-  if (row.kind === "ml") return false;
-  if (row.line == null) return false;
-  const main = mainLineValue(row);
-  if (main == null) return false;
-  const value = row.kind === "spread" ? Math.abs(Number(row.line)) : Number(row.line);
-  if (!Number.isFinite(value)) return false;
-  return Math.abs(value - main) > 0.05;
+  return false;
 }
 function marketName(row) {
   let name = marketBaseName(row);
@@ -1062,7 +1067,7 @@ function hasProjection(row) {
   if (row.model_prob != null || row.model_mean != null || row.labs_mean != null || row.sim_mean != null) {
     return true;
   }
-  if ((row.source === "onyx" || row.source === "pick6") && row.sim_id) return true;
+  if ((row.source === "4c" || row.source === "onyx" || row.source === "fliff") && row.sim_id) return true;
   if (row.sim_id && (row.model_prob != null || row.model_mean != null)) return true;
   return row.book != null || row.american != null;
 }
@@ -1147,6 +1152,13 @@ function isFootballLateQuarter(row) {
   if (/\b2nd_quarter\b|\b3rd_quarter\b|\b4th_quarter\b/.test(text)) return true;
   if (/\b2nd quarter\b|\b3rd quarter\b|\b4th quarter\b/.test(text)) return true;
   if (/(^|[_\s])(2q|3q|4q|q2|q3|q4)($|[_\s])/.test(text)) return true;
+  return false;
+}
+
+function isDriveMarket(row) {
+  const text = `${row.market_code || ""} ${row.market || ""}`.toLowerCase().replace(/-/g, " ");
+  if (/\b(first|next)\s*drive\b|first_drive|next_drive/.test(text)) return true;
+  if (/\bnext\s*play\b|next_play/.test(text)) return true;
   return false;
 }
 
@@ -1358,9 +1370,8 @@ function renderGames() {
     const n = counts[g.id] || counts[g.game] || 0;
     const leagueTag = String(g.league || "cbb").toUpperCase();
     const score = g.sim_away != null ? ` · ${g.sim_away}–${g.sim_home}` : "";
-    const box = g.sim_away != null
-      ? `<button type="button" class="box-link" data-box="${escapeHtml(id)}">Box</button>`
-      : `<span></span>`;
+    // Always expose Box — openBox loads /api/game even when the rail lacks scores.
+    const box = `<button type="button" class="box-link" data-box="${escapeHtml(id)}">Box</button>`;
     return `<div class="game${state.game === id ? " active" : ""}" data-game="${escapeHtml(id)}">
       ${logo(g.away_logo, g.away)}
       <div><b>${g.away} @ ${g.home}</b><small>${leagueTag} · ${g.start || ""}${score}</small></div>
@@ -1541,9 +1552,26 @@ function caption(bet) {
 
 function fairSource(bet) {
   const src = bet.pick && bet.pick.price_src;
-  if (src === "labs") return "Labs prices";
-  if (src === "evanmiya" || src === "sasser" || src === "nfelo") return "Sharp prices";
+  if (src === "labs") return "Bettor Odds prices";
+  if (src === "evanmiya" || src === "sasser" || src === "nfelo") return "Board prices";
   return "Fair price";
+}
+
+function isBettorOddsMarket(quote) {
+  /** Main player props + full-game ML / spread / total only. */
+  if (!quote) return false;
+  const kind = String(quote.kind || "");
+  const market = String(quote.market || "").toLowerCase();
+  const code = String(quote.market_code || "").toLowerCase();
+  const blob = `${market} ${code}`;
+  if (/half|1st|2nd|3rd|4th|quarter|\b1q\b|\b2q\b|\b3q\b|\b4q\b/.test(blob)) return false;
+  if (/\bsacks?\b|\binterceptions?\b/.test(blob) && kind === "total") return false;
+  if (kind === "prop") return !isAltLine(quote);
+  if (kind === "ml" || kind === "spread" || kind === "total") {
+    if (kind !== "ml" && isAltLine(quote)) return false;
+    return true;
+  }
+  return false;
 }
 
 function sideProbs(bet) {
@@ -1702,44 +1730,49 @@ function flatBet(bet) {
   const alt = isAlt(bet) || Boolean(quote.alt);
   // Prop Labs / sim odds are priced server-side with skew (NegBin/Poisson).
   // Do not rebuild them with the normal fairProbAtLine helper — that made absurd alts.
-  const labsProb = (quote.kind === "prop")
-    ? (quote.price_src === "labs" ? quote.model_prob : null)
-    : (alt ? null : (
-      quote.labs_mean != null
-        ? fairProbAtLine(quote.labs_mean, postedLine, side, spread)
-        : fairProbAtLine(bet.labs, postedLine, side, spread)
-    ));
+  const showBettor = isBettorOddsMarket(quote);
+  const gameMarket = quote.kind === "ml" || quote.kind === "spread" || quote.kind === "total";
+  // Bettor Odds column: Labs on main props; Labs/board tip on full-game ML/spread/total.
+  let labsProj = null;
+  let labsProbVal = null;
+  let labsPrice = null;
+  if (showBettor && quote.kind === "prop") {
+    // Labs usage is an input to the sim — show the projection only here.
+    // Priced odds live in the Sim column (built from that usage mean).
+    labsProj = quote.labs_mean != null ? quote.labs_mean : null;
+    labsProbVal = null;
+    labsPrice = null;
+  } else if (showBettor && gameMarket) {
+    // Prefer Labs game tip when attached; else nfelo/Sasser/Miya board numbers.
+    if (quote.labs_mean != null) {
+      labsProj = quote.kind === "ml" ? null : quote.labs_mean;
+      labsProbVal = quote.labs_prob != null
+        ? quote.labs_prob
+        : (alt ? null : fairProbAtLine(quote.labs_mean, postedLine, side, spread));
+      labsPrice = quote.labs_odds != null
+        ? quote.labs_odds
+        : (labsProbVal != null ? americanFromProb(labsProbVal) : null);
+    } else {
+      const sharpOdds = quote.sharp_odds != null ? quote.sharp_odds : quote.miya_odds;
+      const sharpProb = quote.sharp_prob != null ? quote.sharp_prob : quote.miya_prob;
+      labsProbVal = sharpProb;
+      labsPrice = sharpOdds;
+      if (quote.kind === "spread" || quote.kind === "total") {
+        labsProj = quote.sharp_mean != null ? quote.sharp_mean : null;
+      }
+    }
+  }
   const modelPrice = modelProb != null
     ? (quote.model_odds != null ? quote.model_odds : americanFromProb(modelProb))
     : null;
-  const propLabs = quote.kind === "prop" && (quote.labs_mean != null || quote.price_src === "labs");
-  const labsPrice = !propLabs
-    ? null
-    : (quote.price_src === "labs" && quote.model_odds != null
-      ? quote.model_odds
-      : (labsProb != null ? americanFromProb(labsProb) : null));
   const simPrice = quote.sim_odds != null ? quote.sim_odds : null;
-  const marketName = String(quote.market || bet.market || "").toLowerCase();
-  const halfMarket = /half|1st|2nd|quarter/.test(marketName);
-  const gameMarket = quote.kind === "ml" || quote.kind === "spread" || quote.kind === "total";
-  const sharpOdds = quote.sharp_odds != null ? quote.sharp_odds : quote.miya_odds;
-  const sharpProb = quote.sharp_prob != null ? quote.sharp_prob : quote.miya_prob;
-  const sharpPrice = gameMarket ? sharpOdds : null;
-  // Full-game Sharp projection: spread margin, game total, or team total.
-  let sharpProj = null;
-  if (!halfMarket && (quote.sharp_mean != null || quote.price_src === "evanmiya" || quote.price_src === "sasser" || quote.price_src === "nfelo")) {
-    if (quote.kind === "spread" || quote.kind === "total") {
-      sharpProj = quote.sharp_mean != null ? quote.sharp_mean : quote.model_mean;
+  // Props: Sim column is odds + win% only. The mean lives in Proj / Bettor Odds.
+  let simProj = null;
+  if (quote.kind !== "prop") {
+    simProj = quote.sim_mean != null ? quote.sim_mean : null;
+    if (simProj == null && quote.price_src === "sim" && quote.model_mean != null) {
+      simProj = quote.model_mean;
     }
-  }
-  const labsProj = propLabs
-    ? (quote.labs_mean != null ? quote.labs_mean : (quote.price_src === "labs" ? quote.model_mean : null))
-    : null;
-  const labsProbVal = propLabs ? (quote.price_src === "labs" ? quote.model_prob : labsProb) : null;
-  // Sim column keeps the Monte Carlo mean even when Labs owns Proj / model_mean.
-  let simProj = quote.sim_mean != null ? quote.sim_mean : null;
-  if (simProj == null && quote.price_src === "sim" && quote.model_mean != null) {
-    simProj = quote.model_mean;
   }
   if (quote.kind === "spread" && simProj == null) simProj = null;
   const fairPrice = quote.fair_odds != null ? quote.fair_odds : null;
@@ -1791,12 +1824,10 @@ function flatBet(bet) {
     modelTxt: priceCell(modelProb, modelPrice),
     sim: quote.sim_prob,
     simTxt: priceCell(quote.sim_prob, simPrice, simProj, { spread: quote.kind === "spread" }),
-    miya: sharpProb,
-    miyaTxt: priceCell(sharpProb, sharpPrice, sharpProj, { spread: quote.kind === "spread" }),
-    sharp: sharpProb,
-    sharpTxt: priceCell(sharpProb, sharpPrice, sharpProj, { spread: quote.kind === "spread" }),
     labs: labsProbVal,
-    labsTxt: priceCell(labsProbVal, labsPrice, labsProj),
+    labsTxt: showBettor
+      ? priceCell(labsProbVal, labsPrice, labsProj, { spread: quote.kind === "spread" })
+      : "",
     fair: quote.fair_prob,
     fairTxt: priceCell(quote.fair_prob, fairPrice),
     book: quote.source || "",
@@ -1813,6 +1844,7 @@ function flatBet(bet) {
   };
 }
 
+const BETTOR_ODDS_LOGO = `<img class="labs-logo" src="/static/books/bettorodds.png" alt="Bettor Odds" title="Bettor Odds" />`;
 const SORT_COLS = [
   ["game", "Game"],
   ["name", "Market"],
@@ -1823,8 +1855,7 @@ const SORT_COLS = [
   ["proj", "Proj"],
   ["l5", "L5 Avg"],
   ["sim", "Sim"],
-  ["sharp", "Sharp"],
-  ["labs", "Labs"],
+  ["labs", BETTOR_ODDS_LOGO],
   ["fair", "No-vig fair"],
   ["book", "Book"],
   ["odds", "Odds"],
@@ -1837,7 +1868,7 @@ function sortValue(row, key) {
   if (key === "name") return `${row.name} ${row.market}`.toLowerCase();
   if (key === "side") return String(row.side || "").toLowerCase();
   if (key === "book") return String(row.book || "").toLowerCase();
-  if (key === "line" || key === "hist" || key === "z" || key === "proj" || key === "l5" || key === "model" || key === "sim" || key === "sharp" || key === "miya" || key === "labs" || key === "fair" || key === "odds" || key === "roi" || key === "ev" || key === "qk") {
+  if (key === "line" || key === "hist" || key === "z" || key === "proj" || key === "l5" || key === "model" || key === "sim" || key === "labs" || key === "fair" || key === "odds" || key === "roi" || key === "ev" || key === "qk") {
     const n = Number(row[key === "ev" ? "roi" : key]);
     return Number.isFinite(n) ? n : (state.sortDir === "asc" ? Infinity : -Infinity);
   }
@@ -1873,7 +1904,11 @@ function sortHeader(key, label) {
             ? ` title="Average historical posted/closing line from The Odds API + desk snapshots"`
             : (key === "z"
               ? ` title="Z-score of the current line vs the historical line sample: (line − mean) / sd"`
-              : "")))));
+              : (key === "labs"
+                ? ` title="Bettor Odds usage projection (props) or board tip (ML/spread/total). Props are priced in Sim from this usage."`
+                : (key === "sim"
+                  ? ` title="Sim price: projection, American odds, and win% (Labs usage folded into the mean when available)"`
+                  : "")))))));
   return `<th class="${key === "game" || key === "name" ? "left " : ""}${active ? "active" : ""}" data-sort="${key}"${tip}>${label}<span class="arrow">${arrow}</span></th>`;
 }
 
@@ -1935,7 +1970,6 @@ function tableFor(list) {
         <td>${row.projTxt || ""}</td>
         <td>${row.l5Txt || ""}</td>
         <td>${row.simTxt}</td>
-        <td>${row.sharpTxt || row.miyaTxt || ""}</td>
         <td>${row.labsTxt}</td>
         <td>${row.fairTxt}</td>
         <td class="left">${row.bookTxt}</td>
