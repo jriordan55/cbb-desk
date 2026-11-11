@@ -272,6 +272,91 @@
   }
   .book-quote b { font-variant-numeric: tabular-nums; min-width: 42px; text-align: right; }
   .book-quote span { color: var(--muted); }
+  .form-panel {
+    display: grid;
+    gap: 10px;
+    padding: 4px 4px 8px;
+  }
+  .form-card {
+    background: var(--card);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    padding: 12px 14px 10px;
+  }
+  .form-card h4 {
+    margin: 0 0 10px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--navy);
+    letter-spacing: 0.02em;
+  }
+  .form-stats {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px 12px;
+    margin-bottom: 10px;
+  }
+  .form-stats div { min-width: 0; }
+  .form-stats span {
+    display: block;
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .form-stats b {
+    display: block;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .form-chart {
+    width: 100%;
+    height: 248px;
+    display: block;
+    background: #f7f9fb;
+    border: 1px solid var(--line);
+  }
+  .form-chart image { pointer-events: none; }
+  .form-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .form-legend i {
+    display: inline-block;
+    width: 12px;
+    height: 10px;
+    margin-right: 6px;
+    vertical-align: -1px;
+  }
+  .form-legend .hist { background: #c5ced8; }
+  .form-legend .hit { background: #0b7a3b; }
+  .form-legend .miss { background: #b42318; opacity: 0.55; }
+  .form-legend .model { background: var(--navy); height: 2px; vertical-align: 3px; }
+  .form-legend .avg { background: #c47a12; height: 2px; vertical-align: 3px; }
+  .form-legend .posted {
+    width: 14px;
+    height: 0;
+    border-top: 2px solid #101318;
+    background: transparent;
+    vertical-align: 3px;
+  }
+  .form-legend .line {
+    border-left: 2px dotted var(--ink);
+    width: 0;
+    height: 12px;
+    background: transparent;
+    vertical-align: -2px;
+  }
+  @media (max-width: 900px) {
+    .form-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
   .cell-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .cell-main b { display: block; font-size: 13px; }
   .cell-main span { display: block; color: var(--muted); font-size: 11px; }
@@ -1060,6 +1145,10 @@ function rebuildMainLines(rows) {
     // Spreads vote on absolute line so home/away mirror the same main.
     const lineKey = (row.kind === "spread" ? Math.abs(raw) : raw).toFixed(1);
     const bucket = votes.get(key) || new Map();
+    const price = Number(row.book != null ? row.book : row.american);
+    // One-sided longshot dogs never define the main (4C sometimes stamps them main).
+    if (row.kind === "prop" && Number.isFinite(price) && price >= 250) return;
+    if (Number.isFinite(price) && Math.abs(price) >= 700) return;
     let weight = 1;
     if (row.is_main === true || row.is_main === "true" || row.is_main === 1 || row.is_main === "1") weight += 5;
     if (row.alt === true || row.alt === "true" || row.alt === 1 || row.alt === "1" || row.is_main === false || row.is_main === "false") weight -= 3;
@@ -1096,6 +1185,9 @@ function isAltLine(row) {
   if (!row) return false;
   if (row.kind === "ml") return false;
   if (row.line == null) return false;
+  const price = Number(row.book != null ? row.book : row.american);
+  // Longshot dogs are alt rungs even when a feed mislabels them as main.
+  if (row.kind === "prop" && Number.isFinite(price) && price >= 250) return true;
   // Consensus main across books wins over a single book's is_main flag
   // (PrizePicks often tags a goblin/wrong-period 10.5 as main).
   const main = mainLineValue(row);
@@ -1144,10 +1236,10 @@ function betKey(row) {
   const line = row.line == null ? "" : (row.kind === "spread" ? Math.abs(Number(row.line)).toFixed(1) : Number(row.line).toFixed(1));
   const side = sideOf(row);
   const team = teamName(row).toLowerCase();
-  // One row per side so both teams / over-under stay visible.
-  // Spreads key on home/away seat so "UConn" and "Connecticut" collapse.
+  // One row per side so over markets only carry over books (and under only
+  // under). Spreads key on home/away seat so "UConn" / "Connecticut" collapse.
   // Canonical family+period so "Anytime Td" / "Anytime Touchdowns" / codes collapse
-  // to one best-book row; other books stay in the click-to-expand panel.
+  // to one best-book row; other books on the same side stay in the expand panel.
   if (row.kind === "prop") {
     return ["prop", gid, String(row.player || "").toLowerCase(), propPeriod(row), propStatFamily(row), line, side].join("|");
   }
@@ -1171,7 +1263,7 @@ function chips(id, items, key) {
     state[key] = value;
     if (key === "market") {
       state.marketName = "all";
-      // Hist / Z / L5 only exist on player props.
+      // Hist / Z / L10 only exist on player props.
       if (value !== "prop" && ["hist", "z", "l5"].includes(state.sortKey)) {
         state.sortKey = "roi";
         state.sortDir = "desc";
@@ -1196,7 +1288,7 @@ const MARKET_NAME_ORDER = [
   "2nd Half Moneyline", "2nd Half Spread", "2nd Half Total",
   "Points", "Rebounds", "Assists", "Three-Pointers Made", "Steals", "Blocked Shots", "Turnovers",
   "Points + Rebounds + Assists", "Points + Rebounds", "Points + Assists", "Rebounds + Assists",
-  "Double-Double", "First Rebounder", "First Assister",
+  "Double-Double",
   "Anytime TD", "Passing Touchdowns", "Rushing Touchdowns", "Receiving Touchdowns",
   "Passing Yards", "Rushing Yards", "Receiving Yards", "Receptions",
   "Rush + Rec Yards", "Pass + Rush Yards",
@@ -1612,6 +1704,215 @@ function density(bet) {
   </svg>`;
 }
 
+function formCacheKey(bet) {
+  const pick = bet && bet.pick;
+  if (!pick || pick.kind !== "prop") return "";
+  return [
+    rowLeague(pick),
+    String(pick.player || "").toLowerCase(),
+    propStatFamily(pick),
+    String(pick.athlete_id || ""),
+  ].join("|");
+}
+
+function normalPdf(x, mean, std) {
+  const z = (x - mean) / std;
+  return Math.exp(-0.5 * z * z) / (std * Math.sqrt(2 * Math.PI));
+}
+
+function formGames(form) {
+  if (form && Array.isArray(form.games) && form.games.length) {
+    return form.games.filter((g) => Number.isFinite(Number(g && g.value)));
+  }
+  const values = ((form && form.values) || []).map(Number).filter((v) => Number.isFinite(v));
+  const dates = (form && form.dates) || [];
+  return values.map((value, i) => ({ value, date: dates[i] || "", opp: "", opp_logo: "" }));
+}
+
+function formShortDate(text) {
+  const raw = String(text || "");
+  const week = raw.match(/\bW(?:eek)?\s*(\d+)\b/i);
+  if (week) return `Week ${Number(week[1])}`;
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    return `${Number(raw.slice(5, 7))}/${Number(raw.slice(8, 10))}`;
+  }
+  return raw;
+}
+
+function formAxisCaption(game, league) {
+  const g = game || {};
+  if (g.week != null && Number.isFinite(Number(g.week))) return `Week ${Number(g.week)}`;
+  const label = String(g.label || "");
+  if (/^week\s*\d+/i.test(label)) return label.replace(/^week\s*/i, "Week ");
+  const fromDate = formShortDate(g.date || label);
+  if (/^Week\s+\d+/i.test(fromDate)) return fromDate;
+  if (league === "nfl" || league === "cfb") return fromDate || "—";
+  return fromDate || "—";
+}
+
+function formGuideLabels(guides) {
+  /** Keep left-rail labels from stacking on top of each other. */
+  const gap = 14;
+  const ordered = guides
+    .filter((g) => Number.isFinite(g.y))
+    .sort((a, b) => a.y - b.y)
+    .map((g) => ({ ...g }));
+  for (let i = 1; i < ordered.length; i++) {
+    if (ordered[i].y - ordered[i - 1].y < gap) {
+      ordered[i].y = ordered[i - 1].y + gap;
+    }
+  }
+  return ordered;
+}
+
+function formChartSvg(bet, form) {
+  const pick = bet.pick || {};
+  const mean = Number(bet.mean != null ? bet.mean : pick.model_mean);
+  const line = Number(bet.line != null ? bet.line : pick.line);
+  const side = sideOf(pick) || bet.side || "over";
+  const league = rowLeague(pick);
+  const games = formGames(form);
+  if (!Number.isFinite(mean) || !Number.isFinite(line)) return "";
+  const values = games.map((g) => Number(g.value));
+  const histVals = games.map((g) => Number(g.hist_line)).filter((v) => Number.isFinite(v));
+  const avg = form && form.avg != null
+    ? Number(form.avg)
+    : (values.length ? values.reduce((a, b) => a + b, 0) / values.length : null);
+  const w = 760, h = 248, padL = 64, padR = 22, padT = 28, padB = 58;
+  const sampleHi = values.length
+    ? Math.max(...values, line, mean, avg || 0, ...(histVals.length ? histVals : [0]))
+    : Math.max(line, mean, ...(histVals.length ? histVals : [0]));
+  let hi = Math.max(sampleHi * 1.22, line + 1, mean + 1, 1);
+  let lo = 0;
+  if (!(hi > lo)) hi = lo + 1;
+  const n = Math.max(games.length, 1);
+  const slot = (w - padL - padR) / n;
+  const barW = Math.max(12, Math.min(34, slot * 0.52));
+  const Y = (v) => padT + (1 - (Number(v) - lo) / (hi - lo)) * (h - padT - padB);
+  const baseY = h - padB;
+  const yLine = Y(line);
+  const yMean = Y(mean);
+  const yAvg = Number.isFinite(avg) ? Y(avg) : null;
+  const guides = formGuideLabels([
+    { y: yLine, text: `Line ${lineTxt(line)}`, fill: "#101318", dash: true, stroke: "#101318" },
+    { y: yMean, text: `Model ${lineTxt(mean)}`, fill: "#001a4d", dash: false, stroke: "#001a4d" },
+    ...(yAvg == null ? [] : [{ y: yAvg, text: `L10 ${lineTxt(avg)}`, fill: "#9a5b00", dash: false, stroke: "#c47a12" }]),
+  ]);
+  const guideLines = [
+    { y: yLine, stroke: "#101318", dash: "5 4", width: 1.4, opacity: 0.55 },
+    { y: yMean, stroke: "#001a4d", dash: "", width: 1.5, opacity: 0.55 },
+    ...(yAvg == null ? [] : [{ y: yAvg, stroke: "#c47a12", dash: "", width: 1.6, opacity: 0.7 }]),
+  ].map((g) => (
+    `<line x1="${padL}" y1="${g.y.toFixed(1)}" x2="${(w - padR).toFixed(1)}" y2="${g.y.toFixed(1)}" stroke="${g.stroke}" stroke-width="${g.width}" ${g.dash ? `stroke-dasharray="${g.dash}"` : ""} opacity="${g.opacity}" />`
+  )).join("");
+  const guideText = guides.map((g) => (
+    `<text x="${(padL - 8).toFixed(1)}" y="${(g.y + 3.5).toFixed(1)}" text-anchor="end" fill="${g.fill}" font-size="11" font-weight="700">${escapeHtml(g.text)}</text>`
+  )).join("");
+  const bars = games.map((g, i) => {
+    const value = Number(g.value);
+    const hist = Number(g.hist_line);
+    const hit = side === "under" ? value < line : value > line;
+    const x = padL + slot * i + (slot - barW) / 2;
+    const y = Y(Math.max(value, 0));
+    const bh = Math.max(3, baseY - y);
+    const color = hit ? "#0b7a3b" : "#b42318";
+    const cx = x + barW / 2;
+    const logo = String(g.opp_logo_cdn || g.opp_logo || "");
+    const abbr = String(g.opp || "").slice(0, 4);
+    const axis = formAxisCaption(g, league);
+    const label = lineTxt(value);
+    const labelW = Math.max(18, String(label).length * 7.2 + 8);
+    const labelX = cx - labelW / 2;
+    const labelY = Math.max(6, y - 18);
+    const logoTag = logo
+      ? `<image href="${escapeHtml(logo)}" xlink:href="${escapeHtml(logo)}" x="${(cx - 9).toFixed(1)}" y="${(baseY + 5).toFixed(1)}" width="18" height="18" preserveAspectRatio="xMidYMid meet" />`
+      : `<text x="${cx.toFixed(1)}" y="${(baseY + 16).toFixed(1)}" text-anchor="middle" fill="#6a7380" font-size="10" font-weight="700">${escapeHtml(abbr || "—")}</text>`;
+    let histMark = "";
+    if (Number.isFinite(hist)) {
+      const yH = Y(hist);
+      const histLabel = lineTxt(hist);
+      const tickX1 = x - 1;
+      const tickX2 = x + barW + 1;
+      // Keep posted-line label clear of the actual-value chip.
+      const histTextY = Math.abs(yH - (labelY + 11)) < 14 ? Math.min(baseY - 2, yH + 12) : yH - 4;
+      histMark = `<line x1="${tickX1.toFixed(1)}" y1="${yH.toFixed(1)}" x2="${tickX2.toFixed(1)}" y2="${yH.toFixed(1)}" stroke="#ffffff" stroke-width="4" stroke-linecap="round" />
+      <line x1="${tickX1.toFixed(1)}" y1="${yH.toFixed(1)}" x2="${tickX2.toFixed(1)}" y2="${yH.toFixed(1)}" stroke="#101318" stroke-width="2" stroke-linecap="round" />
+      <text x="${cx.toFixed(1)}" y="${histTextY.toFixed(1)}" text-anchor="middle" fill="#3d4654" font-size="9" font-weight="700">${escapeHtml(histLabel)}</text>`;
+    }
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${color}" rx="3" />
+      ${histMark}
+      <rect x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" width="${labelW.toFixed(1)}" height="15" rx="3" fill="#ffffff" stroke="#d9dee6" />
+      <text x="${cx.toFixed(1)}" y="${(labelY + 11).toFixed(1)}" text-anchor="middle" fill="#101318" font-size="11" font-weight="700">${escapeHtml(label)}</text>
+      ${logoTag}
+      <text x="${cx.toFixed(1)}" y="${(baseY + (logo ? 32 : 28)).toFixed(1)}" text-anchor="middle" fill="#6a7380" font-size="10">${escapeHtml(axis)}</text>`;
+  }).join("");
+  const empty = games.length
+    ? ""
+    : `<text x="${(w / 2).toFixed(1)}" y="${(h / 2).toFixed(1)}" text-anchor="middle" fill="#6a7380" font-size="12">Loading last 10 games…</text>`;
+  return `<svg class="form-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Last ${values.length || 10} games vs line">
+    <line x1="${padL}" y1="${baseY}" x2="${(w - padR).toFixed(1)}" y2="${baseY}" stroke="#d9dee6" />
+    ${guideLines}
+    ${bars || empty}
+    ${guideText}
+  </svg>`;
+}
+
+function formPanelHtml(bet, form) {
+  const pick = bet.pick || {};
+  if (pick.kind !== "prop") return "";
+  const mean = Number(bet.mean != null ? bet.mean : pick.model_mean);
+  const stdRaw = Number(bet.std != null ? bet.std : pick.model_std);
+  const std = Number.isFinite(stdRaw) && stdRaw > 0 ? stdRaw : defaultStd(mean);
+  const line = Number(bet.line != null ? bet.line : pick.line);
+  const side = sideOf(pick) || bet.side || "over";
+  const games = formGames(form);
+  const values = games.map((g) => Number(g.value)).filter((v) => Number.isFinite(v));
+  const avg = form && form.avg != null
+    ? Number(form.avg)
+    : (pick.l5_avg != null ? Number(pick.l5_avg) : null);
+  let chance = null;
+  if (Number.isFinite(mean) && Number.isFinite(std) && Number.isFinite(line)) {
+    const overP = 1 - normalCdf(line, mean, std);
+    chance = side === "under" ? (1 - overP) : overP;
+  } else if (pick.model_prob != null) {
+    chance = Number(pick.model_prob);
+  }
+  const hitN = values.length
+    ? values.filter((v) => (side === "under" ? v < line : v > line)).length
+    : null;
+  const hitRate = hitN == null ? null : hitN / values.length;
+  const usualLo = Number.isFinite(mean) && Number.isFinite(std)
+    ? Math.max(0, mean - 1.6 * std)
+    : (form && form.low);
+  const usualHi = Number.isFinite(mean) && Number.isFinite(std)
+    ? mean + 1.6 * std
+    : (form && form.high);
+  const lineLabel = side === "under" ? `${lineTxt(line)} or less` : `${lineTxt(line)} or more`;
+  const chart = formChartSvg(bet, form || { values: [], games: [] });
+  if (!chart) return "";
+  const loading = form == null;
+  const nGames = values.length || 10;
+  return `<div class="form-card">
+    <h4>The model next to last ${nGames} games</h4>
+    <div class="form-stats">
+      <div><span>Chance of ${escapeHtml(lineLabel)}</span><b>${chance == null ? "—" : Math.round(chance * 100) + "%"}</b></div>
+      <div><span>Model expects</span><b>${Number.isFinite(mean) ? lineTxt(mean) : "—"}</b></div>
+      <div><span>L10 average</span><b>${avg == null || !Number.isFinite(avg) ? (loading ? "…" : "—") : lineTxt(avg)}</b></div>
+      <div><span>Usual range</span><b>${usualLo == null || usualHi == null ? "—" : `${lineTxt(usualLo)}–${lineTxt(usualHi)}`}</b></div>
+      <div><span>Hit rate</span><b>${hitRate == null ? (loading ? "…" : "—") : `${Math.round(hitRate * 100)}% (${hitN}/${values.length})`}</b></div>
+    </div>
+    ${chart}
+    <div class="form-legend">
+      <span><i class="hit"></i>Hits vs line</span>
+      <span><i class="miss"></i>Misses</span>
+      <span><i class="posted"></i>Posted that night</span>
+      <span><i class="model"></i>Model</span>
+      <span><i class="avg"></i>L10 average</span>
+      <span><i class="line"></i>Line ${escapeHtml(lineTxt(line))}</span>
+    </div>
+  </div>`;
+}
+
 function caption(bet) {
   if (bet.line == null) return "";
   const sims = 1000;
@@ -1894,9 +2195,15 @@ function flatBet(bet) {
     const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
     z = Math.round(1000 * (z >= 0 ? 1 - p : p)) / 10;
   }
-  const histOk = hist != null && histN != null && Number(histN) >= 20;
+  // College can show Z on small this-season samples; other leagues keep n≥20.
+  const lg = rowLeague(quote);
+  const histMin = (lg === "cbb" || lg === "cfb") ? 3 : 20;
+  const histOk = hist != null && histN != null && Number(histN) >= histMin;
   if (!histOk) z = null;
   const zTxt = z == null ? "" : (Math.abs(z - Math.round(z)) < 1e-9 ? String(Math.round(z)) : z.toFixed(1));
+  const xminRaw = quote.xmin != null ? Number(quote.xmin) : (bet.xmin != null ? Number(bet.xmin) : null);
+  const xmin = Number.isFinite(xminRaw) && xminRaw >= 1 ? xminRaw : null;
+  const xminTxt = xmin == null ? "" : xmin.toFixed(1);
   // Expected ROI per unit staked (Prop Pricing Model): P(side) × decimal − 1.
   let roi = quote.ev != null ? quote.ev : bet.ev;
   if (roi == null && modelProb != null && bookPrice != null) {
@@ -1921,6 +2228,8 @@ function flatBet(bet) {
     zTxt,
     proj: proj.value,
     projTxt: proj.text,
+    xmin,
+    xminTxt,
     l5,
     l5Txt,
     model: modelProb,
@@ -1956,7 +2265,8 @@ const SORT_COLS_ALL = [
   ["hist", "Hist Line"],
   ["z", "Z"],
   ["proj", "Proj"],
-  ["l5", "L5 Avg"],
+  ["xmin", "xMin"],
+  ["l5", "L10 Avg"],
   ["sim", "Sim"],
   ["labs", BETTOR_ODDS_LOGO],
   ["fair", "No-vig fair"],
@@ -1965,10 +2275,19 @@ const SORT_COLS_ALL = [
   ["roi", "Exp ROI"],
   ["qk", "QK"],
 ];
-const PROP_ONLY_COLS = new Set(["hist", "z", "l5"]);
+const PROP_ONLY_COLS = new Set(["hist", "z", "l5", "xmin"]);
+const BASKETBALL_PROP_COLS = new Set(["xmin"]);
+function showXminCol() {
+  if (state.market !== "prop") return false;
+  const lg = String(state.league || "cbb").toLowerCase();
+  return lg === "all" || lg === "nba" || lg === "cbb";
+}
 function sortCols() {
-  // Hist / Z / L5 are player-prop columns only.
-  if (state.market === "prop") return SORT_COLS_ALL;
+  // Hist / Z / L10 are player-prop columns; xMin is NBA/CBB props only.
+  if (state.market === "prop") {
+    if (showXminCol()) return SORT_COLS_ALL;
+    return SORT_COLS_ALL.filter(([key]) => !BASKETBALL_PROP_COLS.has(key));
+  }
   return SORT_COLS_ALL.filter(([key]) => !PROP_ONLY_COLS.has(key));
 }
 
@@ -1977,7 +2296,7 @@ function sortValue(row, key) {
   if (key === "name") return `${row.name} ${row.market}`.toLowerCase();
   if (key === "side") return String(row.side || "").toLowerCase();
   if (key === "book") return String(row.book || "").toLowerCase();
-  if (key === "line" || key === "hist" || key === "z" || key === "proj" || key === "l5" || key === "model" || key === "sim" || key === "labs" || key === "fair" || key === "odds" || key === "roi" || key === "ev" || key === "qk") {
+  if (key === "line" || key === "hist" || key === "z" || key === "proj" || key === "xmin" || key === "l5" || key === "model" || key === "sim" || key === "labs" || key === "fair" || key === "odds" || key === "roi" || key === "ev" || key === "qk") {
     const n = Number(row[key === "ev" ? "roi" : key]);
     return Number.isFinite(n) ? n : (state.sortDir === "asc" ? Infinity : -Infinity);
   }
@@ -2008,11 +2327,11 @@ function sortHeader(key, label) {
       : (key === "proj"
         ? ` title="Model projection. Spreads use line signs (− favorite / + dog). Props are points/yards/TDs."`
         : (key === "l5"
-          ? ` title="Last 5 games average of the actual result for this market"`
+          ? ` title="Last 10 games average of the actual result for this market (this season for college)"`
           : (key === "hist"
-            ? ` title="Average historical posted/closing line (n≥20 unique games). Blank until The Odds API + desk history reach 20."`
+            ? ` title="Average posted/closing line this season from The Odds API + desk history. College uses whatever games are available."`
             : (key === "z"
-              ? ` title="0–100 score of current line vs hist (n≥20). 50 = at historical mean; high = line above hist."`
+              ? ` title="0–100 score of current line vs hist (50 = at historical mean). College uses this-season sample; NFL/NBA prefer n≥20."`
               : (key === "labs"
                 ? ` title="Bettor Odds usage projection (props) or board tip (ML/spread/total). Props are priced in Sim from this usage."`
                 : (key === "sim"
@@ -2044,10 +2363,53 @@ function betterBookQuote(a, b) {
   if ((a.model_prob != null ? Number(a.model_prob) : 0.5) < 0.5) return ap >= bp ? a : b;
   return ap <= bp ? a : b;
 }
+function bookPanelQuotes(bet) {
+  // Prefer quotes already grouped on the bet; also sweep the board for the
+  // same market/line/side so every sportsbook on this side shows.
+  const out = [];
+  const seen = new Set();
+  const add = (row) => {
+    if (!row || row.book == null || !sanePrice(row.book, row.source, row)) return;
+    const key = bookQuoteKey(row);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(row);
+  };
+  (bet.quotes || []).forEach(add);
+  const pick = bet.pick || (bet.quotes || [])[0];
+  if (!pick) return out;
+  const gid = pick.sim_id || pick.game;
+  const wantSide = sideOf(pick);
+  const wantSeat = pick.kind === "spread" ? (spreadSeat(pick) || "") : "";
+  const line = pick.line == null ? null : (pick.kind === "spread" ? Math.abs(Number(pick.line)) : Number(pick.line));
+  ((state.book && state.book.rows) || []).forEach((row) => {
+    if ((row.sim_id || row.game) !== gid) return;
+    if (row.kind !== pick.kind) return;
+    if (pick.kind === "prop") {
+      if (String(row.player || "").toLowerCase() !== String(pick.player || "").toLowerCase()) return;
+      if (propPeriod(row) !== propPeriod(pick)) return;
+      if (propStatFamily(row) !== propStatFamily(pick)) return;
+      if (wantSide && sideOf(row) !== wantSide) return;
+    } else if (pick.kind === "total") {
+      if (String(row.market || "") !== String(pick.market || "")) return;
+      if (wantSide && sideOf(row) !== wantSide) return;
+    } else if (pick.kind === "spread") {
+      if (String(row.market || "") !== String(pick.market || "")) return;
+      if (wantSeat && (spreadSeat(row) || "") !== wantSeat) return;
+    } else if (String(row.market || "") !== String(pick.market || "")) {
+      return;
+    }
+    if (line != null) {
+      const other = row.line == null ? null : (row.kind === "spread" ? Math.abs(Number(row.line)) : Number(row.line));
+      if (other == null || Math.abs(other - line) > 0.05) return;
+    }
+    add(row);
+  });
+  return out;
+}
 function bookPanel(bet) {
   const best = new Map();
-  (bet.quotes || []).forEach((row) => {
-    if (row.book == null || !sanePrice(row.book, row.source, row)) return;
+  bookPanelQuotes(bet).forEach((row) => {
     const key = bookQuoteKey(row);
     const prev = best.get(key);
     best.set(key, prev ? betterBookQuote(prev, row) : row);
@@ -2057,14 +2419,23 @@ function bookPanel(bet) {
     if (book) return book;
     return String(quoteSideTxt(a)).localeCompare(String(quoteSideTxt(b)));
   });
-  if (!ordered.length) return "";
+  const books = ordered.length
+    ? `<div class="book-panel">${ordered.map((row) => {
+      const line = row.line == null ? "" : (row.kind === "spread" ? signedLine(row.line) : lineTxt(row.line));
+      const side = quoteSideTxt(row);
+      return `<div class="book-quote">${bookMark(row.source)}<span>${escapeHtml(side)}${line ? " " + line : ""}</span><b>${odds(row.book)}</b></div>`;
+    }).join("")}</div>`
+    : "";
+  const cacheKey = formCacheKey(bet);
+  const form = cacheKey ? formCache[cacheKey] : null;
+  const chart = (bet.pick && bet.pick.kind === "prop")
+    ? formPanelHtml(bet, form === undefined ? null : form)
+    : "";
+  if (!books && !chart) return "";
   const cols = sortCols();
-  return `<tr class="book-row"><td colspan="${cols.length}"><div class="book-panel">${ordered.map((row) => {
-    const line = row.line == null ? "" : (row.kind === "spread" ? signedLine(row.line) : lineTxt(row.line));
-    const side = quoteSideTxt(row);
-    return `<div class="book-quote">${bookMark(row.source)}<span>${escapeHtml(side)}${line ? " " + line : ""}</span><b>${odds(row.book)}</b></div>`;
-  }).join("")}</div></td></tr>`;
+  return `<tr class="book-row"><td colspan="${cols.length}"><div class="form-panel">${chart}${books}</div></td></tr>`;
 }
+const formCache = {};
 function tableFor(list) {
   if (!list.length) return `<div class="empty">No posted markets in this view.</div>`;
   const rows = sortedRows(list);
@@ -2085,6 +2456,7 @@ function tableFor(list) {
         ${propCols ? `<td>${row.histTxt || ""}</td>` : ""}
         ${propCols ? `<td class="${row.z == null ? "" : (row.z >= 70 ? "ev" : (row.z <= 30 ? "ev neg" : ""))}">${row.zTxt || ""}</td>` : ""}
         <td>${row.projTxt || ""}</td>
+        ${showXminCol() ? `<td>${row.xminTxt || ""}</td>` : ""}
         ${propCols ? `<td>${row.l5Txt || ""}</td>` : ""}
         <td>${row.simTxt}</td>
         <td>${row.labsTxt}</td>
@@ -2099,7 +2471,7 @@ function tableFor(list) {
 }
 
 const BOX_STATS_BBALL = [
-  ["mpg", "Min"],
+  ["mpg", "xMin"],
   ["points", "Pts"],
   ["rebounds", "Reb"],
   ["assists", "Ast"],
@@ -2162,8 +2534,9 @@ function boxAccent(desk, side) {
   if (color && other && hexDist(color, other) < 50) color = hexColor(id, true) || color;
   return color || "#001a4d";
 }
-function boxColumn(name, logoSrc, players, accent, league) {
+function boxColumn(name, logoSrc, players, accent, league, injuredKeys) {
   const cols = boxStatsFor(league);
+  const side = players.length && players[0].side ? players[0].side : "";
   const rows = players.slice().sort((a, b) => {
     const aUse = Number(a.mpg);
     const bUse = Number(b.mpg);
@@ -2172,18 +2545,21 @@ function boxColumn(name, logoSrc, players, accent, league) {
     return sum(b) - sum(a);
   });
   const highlight = league === "cfb" || league === "nfl" ? "passing_yards" : "points";
-  const body = rows.map((player) => `<tr>
-    <td class="left">${escapeHtml(boxShort(player.player))}</td>
+  const body = rows.map((player) => {
+    const out = injuredKeys && injuredKeys.has(`${String(player.player || "").toLowerCase()}|${player.side || side}`);
+    return `<tr>
+    <td class="left">${escapeHtml(boxShort(player.player))}${out ? ` <span class="tag">Out</span>` : ""}</td>
     ${cols.map(([key]) => {
       const value = boxNum(boxStat(player, key));
       return key === highlight
         ? `<td class="pts" style="color:${accent}">${value}</td>`
         : `<td>${value}</td>`;
     }).join("")}
-  </tr>`).join("");
+  </tr>`;
+  }).join("");
   return `<section class="box-col">
     <h3>${logo(logoSrc, name)}${escapeHtml(name)}</h3>
-    <p class="est">Estimated box · this game</p>
+    <p class="est">Projected box · this game</p>
     <table class="box-table">
       <thead><tr><th class="left">Player</th>${cols.map(([, label]) => `<th>${label}</th>`).join("")}</tr></thead>
       <tbody>${body || `<tr><td class="left">No projected rotation</td></tr>`}</tbody>
@@ -2203,6 +2579,12 @@ function boxInjuries(injuries, awayName, homeName) {
     return `<li><b>${escapeHtml(boxShort(row.player))}</b> <span>${escapeHtml(team || "")}</span><span class="tag">${escapeHtml(status)}</span></li>`;
   }).join("")}</ul></div>`;
 }
+function boxSidePoints(players) {
+  return players.reduce((sum, player) => {
+    const pts = Number(boxStat(player, "points"));
+    return sum + (Number.isFinite(pts) ? pts : 0);
+  }, 0);
+}
 function boxHtml(payload, desk) {
   const game = (payload && payload.game) || {};
   const players = (payload && payload.players) || [];
@@ -2210,11 +2592,15 @@ function boxHtml(payload, desk) {
   const league = (payload && payload.league) || game.league || (desk && desk.league) || "cbb";
   const awayName = game.away || (desk && desk.away) || "Away";
   const homeName = game.home || (desk && desk.home) || "Home";
-  const awayScore = desk && desk.sim_away != null ? desk.sim_away : game.sim_away_pts;
-  const homeScore = desk && desk.sim_home != null ? desk.sim_home : game.sim_home_pts;
+  // Keep outs in the box when they still have a projection — the box *is* the
+  // projection, so dropping them made the banner disagree with the table.
   const injuredKeys = new Set(injuries.map((row) => `${String(row.player || "").toLowerCase()}|${row.side || ""}`));
-  const away = players.filter((player) => player.side === "away" && !injuredKeys.has(`${String(player.player || "").toLowerCase()}|away`));
-  const home = players.filter((player) => player.side === "home" && !injuredKeys.has(`${String(player.player || "").toLowerCase()}|home`));
+  const away = players.filter((player) => player.side === "away");
+  const home = players.filter((player) => player.side === "home");
+  const awayBox = boxSidePoints(away);
+  const homeBox = boxSidePoints(home);
+  const awayScore = awayBox > 0.5 ? awayBox : (desk && desk.sim_away != null ? desk.sim_away : game.sim_away_pts);
+  const homeScore = homeBox > 0.5 ? homeBox : (desk && desk.sim_home != null ? desk.sim_home : game.sim_home_pts);
   const spread = boxSpread(homeName, awayName, game.fair_home_spread);
   const total = boxNum(game.fair_total);
   const poss = boxNum(game.exp_possessions);
@@ -2235,8 +2621,8 @@ function boxHtml(payload, desk) {
     ${meta.length ? `<div class="box-meta">${meta.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
     ${boxInjuries(injuries, awayName, homeName)}
     <div class="box-cols">
-      ${boxColumn(awayName, desk && desk.away_logo, away, boxAccent(desk, "away"), league)}
-      ${boxColumn(homeName, desk && desk.home_logo, home, boxAccent(desk, "home"), league)}
+      ${boxColumn(awayName, desk && desk.away_logo, away, boxAccent(desk, "away"), league, injuredKeys)}
+      ${boxColumn(homeName, desk && desk.home_logo, home, boxAccent(desk, "home"), league, injuredKeys)}
     </div>`;
 }
 async function openBox(id) {
@@ -2245,11 +2631,10 @@ async function openBox(id) {
   $("boxBody").innerHTML = `<div class="empty">Loading the sim box score…</div>`;
   modal.classList.add("open");
   try {
-    if (!boxCache[id]) {
-      const response = await fetch("/api/game/" + encodeURIComponent(id));
-      if (!response.ok) throw new Error("missing");
-      boxCache[id] = await response.json();
-    }
+    // Always refetch — props/sim can move under the board without a hard reload.
+    const response = await fetch("/api/game/" + encodeURIComponent(id) + "?t=" + Date.now());
+    if (!response.ok) throw new Error("missing");
+    boxCache[id] = await response.json();
     $("boxBody").innerHTML = boxHtml(boxCache[id], desk);
   } catch (err) {
     $("boxBody").innerHTML = `<div class="empty">No sim box score for this game.</div>`;
@@ -2293,8 +2678,36 @@ function render() {
       const key = tr.getAttribute("data-key");
       state.openKey = state.openKey === key ? "" : key;
       render();
+      if (state.openKey) loadPropForm(state.openKey);
     };
   });
+}
+
+async function loadPropForm(openKey) {
+  const list = bets();
+  const row = list.find((bet) => encodeURIComponent(bet.key || "") === openKey);
+  if (!row || !row.pick || row.pick.kind !== "prop") return;
+  const cacheKey = formCacheKey(row);
+  if (!cacheKey) return;
+  const cached = formCache[cacheKey];
+  // Retry empty caches — earlier failed fetches used to stick forever.
+  if (cached && ((cached.games && cached.games.length) || (cached.values && cached.values.length))) return;
+  const pick = row.pick;
+  const params = new URLSearchParams({
+    league: rowLeague(pick),
+    player: pick.player || "",
+    market: propStatFamily(pick) || pick.market || "",
+    athlete_id: pick.athlete_id || "",
+    n: "10",
+  });
+  try {
+    const response = await fetch("/api/desk/prop-form?" + params.toString());
+    const payload = response.ok ? await response.json() : { values: [], games: [] };
+    formCache[cacheKey] = payload;
+  } catch (err) {
+    delete formCache[cacheKey];
+  }
+  if (state.openKey === openKey) render();
 }
 
 $("q").oninput = () => { state.q = $("q").value; render(); };
