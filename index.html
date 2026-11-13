@@ -1305,6 +1305,17 @@ function chips(id, items, key) {
         state.sortKey = "roi";
         state.sortDir = "desc";
       }
+      if (value === "prop" && CBB_STATIC && state.book && state.book.props_pending) {
+        $("table").innerHTML = `<div class="empty">Loading props…</div>`;
+        ensurePropsLoaded().then((changed) => {
+          if (changed) {
+            const n = (state.book.rows || []).length;
+            $("status").textContent = `${n} prices · ${(state.book.games || []).length} games · ${String(state.league || "cbb").toUpperCase()}`;
+          }
+          render();
+        }).catch(() => render());
+        return;
+      }
     }
     if (key === "period") state.marketName = "all";
     if (key === "league") {
@@ -2954,35 +2965,80 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") $("boxModal").classList.remove("open");
 });
 
-const _edgesCache = Object
+const _edgesCache = {};
 function staticEdgesUrl(league) {
   const lg = String(league || "cbb").toLowerCase();
   if (lg === "all") return "edges_all.json";
-  if (lg === "cbb") return "edges.json"; // default first-paint file
+  if (lg === "cbb") return "edges.json"; // tiny first-paint core (no props)
   return `edges_${lg}.json`;
 }
-async function fetchEdges(league) {
+function staticPropsUrl(league) {
   const lg = String(league || "cbb").toLowerCase();
-  if (_edgesCache[lg]) return _edgesCache[lg];
+  if (lg === "all") return "";
+  return `edges_${lg}_props.json`;
+}
+async function mergeStaticProps(league, body) {
+  if (!CBB_STATIC || !body || !body.props_pending) return body;
+  const url = staticPropsUrl(league);
+  if (!url) return body;
+  try {
+    const response = await fetch(url, { cache: "force-cache" });
+    if (!response.ok) return body;
+    const props = await response.json();
+    const merged = {
+      ...body,
+      rows: (body.rows || []).concat(props.rows || []),
+      props_pending: false,
+    };
+    merged.markets = (merged.rows || []).length;
+    merged.clear_edges = (merged.rows || []).filter((r) => r.clear).length;
+    return merged;
+  } catch (err) {
+    return body;
+  }
+}
+async function fetchEdges(league, { withProps = false } = {}) {
+  const lg = String(league || "cbb").toLowerCase();
+  const cacheKey = withProps ? `${lg}+props` : lg;
+  if (_edgesCache[cacheKey]) return _edgesCache[cacheKey];
+  if (withProps && _edgesCache[lg] && !_edgesCache[lg].props_pending) {
+    _edgesCache[cacheKey] = _edgesCache[lg];
+    return _edgesCache[lg];
+  }
   const url = CBB_STATIC
     ? staticEdgesUrl(lg)
     : `/api/desk/edges?league=${encodeURIComponent(lg)}`;
   const response = await fetch(url, { cache: CBB_STATIC ? "force-cache" : "no-cache" });
   if (!response.ok) throw new Error(`edges ${response.status}`);
-  const body = await response.json();
+  let body = await response.json();
+  if (CBB_STATIC && (withProps || state.market === "prop")) {
+    body = await mergeStaticProps(lg, body);
+  }
   _edgesCache[lg] = body;
+  if (!body.props_pending) _edgesCache[`${lg}+props`] = body;
   return body;
+}
+async function ensurePropsLoaded() {
+  if (!CBB_STATIC || !state.book || !state.book.props_pending) return false;
+  const league = state.league || "cbb";
+  const body = await mergeStaticProps(league, state.book);
+  if (body === state.book || body.props_pending) return false;
+  state.book = body;
+  _edgesCache[league] = body;
+  _edgesCache[`${league}+props`] = body;
+  return true;
 }
 function prefetchStaticLeagues(active) {
   if (!CBB_STATIC) return;
-  const rest = ["cbb", "cfb", "nfl", "nba", "all"].filter((lg) => lg !== active);
   const run = () => {
-    rest.forEach((lg) => {
+    // Warm props for the active league, then other league cores.
+    ensurePropsLoaded().then((changed) => { if (changed) render(); }).catch(() => {});
+    ["cbb", "cfb", "nfl", "nba"].filter((lg) => lg !== active).forEach((lg) => {
       fetchEdges(lg).catch(() => {});
     });
   };
-  if (typeof requestIdleCallback === "function") requestIdleCallback(run, { timeout: 2500 });
-  else setTimeout(run, 800);
+  if (typeof requestIdleCallback === "function") requestIdleCallback(run, { timeout: 1800 });
+  else setTimeout(run, 400);
 }
 async function load() {
   $("table").innerHTML = `<div class="empty">Loading the board…</div>`;
@@ -2993,7 +3049,8 @@ async function load() {
     .then((r) => (r.ok ? r.json() : {}))
     .catch(() => ({}));
   try {
-    const [colors, body] = await Promise.all([colorsP, fetchEdges(league)]);
+    const needProps = state.market === "prop";
+    const [colors, body] = await Promise.all([colorsP, fetchEdges(league, { withProps: needProps })]);
     TEAM_COLORS = colors || {};
     state.book = body;
   } catch (err) {
