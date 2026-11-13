@@ -987,13 +987,40 @@ function lineTxt(value) {
 function initials(name) {
   return String(name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
 }
+function espnLogoUrl(league, teamId) {
+  const tid = String(teamId || "").trim();
+  if (!tid) return "";
+  const lg = String(league || "cbb").toLowerCase();
+  if (lg === "nba") return `https://a.espncdn.com/i/teamlogos/nba/500/${tid}.png`;
+  if (lg === "nfl") return `https://a.espncdn.com/i/teamlogos/nfl/500/${tid}.png`;
+  return `https://a.espncdn.com/i/teamlogos/ncaa/500/${tid}.png`;
+}
+function espnFaceUrl(league, athleteId) {
+  const tid = String(athleteId || "").trim();
+  if (!tid) return "";
+  const lg = String(league || "cbb").toLowerCase();
+  if (lg === "nba") return `https://a.espncdn.com/i/headshots/nba/players/full/${tid}.png`;
+  if (lg === "nfl") return `https://a.espncdn.com/i/headshots/nfl/players/full/${tid}.png`;
+  if (lg === "cfb") return `https://a.espncdn.com/i/headshots/college-football/players/full/${tid}.png`;
+  return `https://a.espncdn.com/i/headshots/mens-college-basketball/players/full/${tid}.png`;
+}
+function rowLogo(row, seat) {
+  const direct = seat === "home" ? row.home_logo : row.away_logo;
+  if (direct) return direct;
+  const tid = seat === "home" ? row.home_id : row.away_id;
+  return espnLogoUrl(rowLeague(row), tid);
+}
+function rowFace(row) {
+  if (row.headshot) return row.headshot;
+  return espnFaceUrl(rowLeague(row), row.athlete_id);
+}
 function logo(src, name) {
   if (!src) return `<span class="logo">${initials(name)}</span>`;
-  return `<img src="${src}" alt="" referrerpolicy="no-referrer" onerror="this.outerHTML='<span class=logo>${initials(name)}</span>'" />`;
+  return `<img src="${src}" alt="" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="this.outerHTML='<span class=logo>${initials(name)}</span>'" />`;
 }
 function face(src) {
   if (!src) return `<span class="face"></span>`;
-  return `<img class="face" src="${src}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'" />`;
+  return `<img class="face" src="${src}" alt="" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="this.style.visibility='hidden'" />`;
 }
 function bookInfo(source) {
   return BOOKS[source] || { name: source || "Book", src: "" };
@@ -1545,10 +1572,12 @@ function renderGames() {
     const score = g.sim_away != null ? ` · ${g.sim_away}–${g.sim_home}` : "";
     // Always expose Box — openBox loads /api/game even when the rail lacks scores.
     const box = `<button type="button" class="box-link" data-box="${escapeHtml(id)}">Box</button>`;
+    const awayLogo = g.away_logo || espnLogoUrl(g.league, g.away_id);
+    const homeLogo = g.home_logo || espnLogoUrl(g.league, g.home_id);
     return `<div class="game${state.game === id ? " active" : ""}" data-game="${escapeHtml(id)}">
-      ${logo(g.away_logo, g.away)}
+      ${logo(awayLogo, g.away)}
       <div><b>${g.away} @ ${g.home}</b><small>${leagueTag} · ${g.start || ""}${score}</small></div>
-      ${logo(g.home_logo, g.home)}
+      ${logo(homeLogo, g.home)}
       ${box}
       <span class="count">${n}</span>
     </div>`;
@@ -2042,7 +2071,7 @@ function titleOf(bet) {
   const market = marketName(row);
   if (row.kind === "prop") {
     return {
-      icon: face(row.headshot),
+      icon: face(rowFace(row)),
       name: row.player || row.selection,
       sub: `${market} · ${row.game}`,
       tag: market,
@@ -2055,7 +2084,7 @@ function titleOf(bet) {
       : (teamName(row) || row.selection || "");
     const line = row.line == null ? "" : signedLine(row.line);
     return {
-      icon: logo(seat === "home" ? row.home_logo : (seat === "away" ? row.away_logo : ""), team),
+      icon: logo(seat === "home" || seat === "away" ? rowLogo(row, seat) : "", team),
       name: line ? `${team} ${line}` : team,
       sub: `${market} · ${row.game}`,
       tag: market,
@@ -2066,7 +2095,7 @@ function titleOf(bet) {
     const team = teamName(row) || String(row.selection || "").replace(/over|under/ig, "").trim();
     const homePick = sameTeam(team, row.home);
     return {
-      icon: teamTotal ? logo(homePick ? row.home_logo : row.away_logo, team) : "",
+      icon: teamTotal ? logo(rowLogo(row, homePick ? "home" : "away"), team) : "",
       name: teamTotal ? team : (sideOf(row) === "under" ? "Under" : "Over"),
       sub: `${market} · ${row.game}`,
       tag: market,
@@ -2077,7 +2106,7 @@ function titleOf(bet) {
     : seat === "away" ? (row.away || teamName(row))
     : (teamName(row) || String(row.selection || "").replace(/over|under/ig, "").trim() || row.game);
   return {
-    icon: logo(seat === "home" ? row.home_logo : (seat === "away" ? row.away_logo : ""), team),
+    icon: logo(seat === "home" || seat === "away" ? rowLogo(row, seat) : "", team),
     name: team,
     sub: `${market} · ${row.game}`,
     tag: market,
@@ -2761,18 +2790,86 @@ function boxHtml(payload, desk) {
       ${boxColumn(homeName, desk && desk.home_logo, home, boxAccent(desk, "home"), league, injuredKeys)}
     </div>`;
 }
+function boxPayloadFromBoard(id, desk) {
+  /** Build a sim box from preloaded board rows (GitHub Pages / static desk). */
+  const rows = ((state.book && state.book.rows) || []).filter((row) => {
+    const gid = String(row.sim_id || row.game_id || row.game || "");
+    const matchId = String(id || "");
+    if (gid && (gid === matchId || String(row.sim_id || "") === matchId)) return true;
+    if (desk && row.away === desk.away && row.home === desk.home) return true;
+    return false;
+  });
+  const byPlayer = new Map();
+  for (const row of rows) {
+    if (row.kind !== "prop" || !row.player) continue;
+    const side = row.side === "home" || row.side === "away"
+      ? row.side
+      : (desk && row.team === desk.home ? "home" : (desk && row.team === desk.away ? "away" : ""));
+    const key = `${String(row.player).toLowerCase()}|${side}`;
+    let player = byPlayer.get(key);
+    if (!player) {
+      player = {
+        player: row.player,
+        team: row.team || (side === "home" ? (desk && desk.home) : (desk && desk.away)) || "",
+        side,
+        mpg: row.proj_mpg != null ? row.proj_mpg : null,
+        stats: {},
+      };
+      byPlayer.set(key, player);
+    }
+    const family = propStatFamily(row) || row.market || "";
+    if (!family || family === "other") continue;
+    const mean = row.sim_mean != null ? row.sim_mean : row.model_mean;
+    if (mean == null || !Number.isFinite(Number(mean))) continue;
+    if (!player.stats[family]) player.stats[family] = { mean: Number(mean) };
+    if (row.proj_mpg != null && player.mpg == null) player.mpg = row.proj_mpg;
+  }
+  const players = Array.from(byPlayer.values());
+  if (!players.length && !(desk && (desk.sim_away != null || desk.sim_home != null))) return null;
+  return {
+    game: {
+      id,
+      league: (desk && desk.league) || "cbb",
+      away: (desk && desk.away) || "",
+      home: (desk && desk.home) || "",
+      game_date: (desk && desk.start) || "",
+      sim_away_pts: desk && desk.sim_away,
+      sim_home_pts: desk && desk.sim_home,
+      fair_home_spread: desk && desk.fair_home_spread,
+      fair_total: desk && desk.fair_total,
+    },
+    league: (desk && desk.league) || "cbb",
+    players,
+    injuries: [],
+    markets: {},
+  };
+}
 async function openBox(id) {
   const modal = $("boxModal");
   const desk = ((state.book && state.book.games) || []).find((game) => (game.id || game.game) === id);
   $("boxBody").innerHTML = `<div class="empty">Loading the sim box score…</div>`;
   modal.classList.add("open");
   try {
+    if (CBB_STATIC) {
+      const payload = boxPayloadFromBoard(id, desk);
+      if (!payload) throw new Error("missing");
+      boxCache[id] = payload;
+      $("boxBody").innerHTML = boxHtml(payload, desk);
+      return;
+    }
     // Always refetch — props/sim can move under the board without a hard reload.
     const response = await fetch("/api/game/" + encodeURIComponent(id) + "?t=" + Date.now());
     if (!response.ok) throw new Error("missing");
     boxCache[id] = await response.json();
     $("boxBody").innerHTML = boxHtml(boxCache[id], desk);
   } catch (err) {
+    // Last resort: synthesize from whatever is already on the board.
+    const fallback = boxPayloadFromBoard(id, desk);
+    if (fallback) {
+      boxCache[id] = fallback;
+      $("boxBody").innerHTML = boxHtml(fallback, desk);
+      return;
+    }
     $("boxBody").innerHTML = `<div class="empty">No sim box score for this game.</div>`;
   }
 }
@@ -2858,12 +2955,17 @@ document.addEventListener("keydown", (event) => {
 async function load() {
   $("table").innerHTML = `<div class="empty">Loading the board…</div>`;
   try {
-    TEAM_COLORS = await (await fetch("static/team_colors.json")).json();
+    const colorsUrl = CBB_STATIC ? "static/team_colors.json" : "/static/team_colors.json";
+    TEAM_COLORS = await (await fetch(colorsUrl)).json();
   } catch (err) {
     TEAM_COLORS = {};
   }
   const league = state.league || "cbb";
-  const response = await fetch(`/api/desk/edges?league=${encodeURIComponent(league)}`);
+  // Static Pages desk serves one pre-baked edges.json (no live API).
+  const edgesUrl = CBB_STATIC
+    ? "edges.json"
+    : `/api/desk/edges?league=${encodeURIComponent(league)}`;
+  const response = await fetch(edgesUrl);
   state.book = await response.json();
   const n = (state.book.rows || []).length;
   const tag = league === "all" ? "all leagues" : String(league).toUpperCase();
@@ -2892,6 +2994,8 @@ async function applyBoard(body, tag) {
 }
 
 async function softReload() {
+  // Static Pages board is a snapshot — no live poll.
+  if (CBB_STATIC) return;
   // Light poll: drop tipped games + restore logos without a full book pull.
   try {
     const league = state.league || "cbb";
