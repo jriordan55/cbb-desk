@@ -1596,10 +1596,12 @@ function renderGames() {
 function scoreboard(game) {
   if (!game) return "";
   const id = game.id || game.game;
+  const awayLogo = game.away_logo || espnLogoUrl(game.league, game.away_id);
+  const homeLogo = game.home_logo || espnLogoUrl(game.league, game.home_id);
   return `<section class="scoreboard">
-    <div class="team">${logo(game.away_logo, game.away)}${game.away}</div>
+    <div class="team">${logo(awayLogo, game.away)}${game.away}</div>
     <div class="mid"><b>${game.sim_away != null ? Number(game.sim_away).toFixed(1) + " – " + Number(game.sim_home).toFixed(1) : "VS"}</b>model</div>
-    <div class="team">${game.home}${logo(game.home_logo, game.home)}</div>
+    <div class="team">${game.home}${logo(homeLogo, game.home)}</div>
     <button type="button" class="box-link" data-box="${escapeHtml(id)}">Box score</button>
   </section>`;
 }
@@ -2952,27 +2954,61 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") $("boxModal").classList.remove("open");
 });
 
+const _edgesCache = Object
+function staticEdgesUrl(league) {
+  const lg = String(league || "cbb").toLowerCase();
+  if (lg === "all") return "edges_all.json";
+  if (lg === "cbb") return "edges.json"; // default first-paint file
+  return `edges_${lg}.json`;
+}
+async function fetchEdges(league) {
+  const lg = String(league || "cbb").toLowerCase();
+  if (_edgesCache[lg]) return _edgesCache[lg];
+  const url = CBB_STATIC
+    ? staticEdgesUrl(lg)
+    : `/api/desk/edges?league=${encodeURIComponent(lg)}`;
+  const response = await fetch(url, { cache: CBB_STATIC ? "force-cache" : "no-cache" });
+  if (!response.ok) throw new Error(`edges ${response.status}`);
+  const body = await response.json();
+  _edgesCache[lg] = body;
+  return body;
+}
+function prefetchStaticLeagues(active) {
+  if (!CBB_STATIC) return;
+  const rest = ["cbb", "cfb", "nfl", "nba", "all"].filter((lg) => lg !== active);
+  const run = () => {
+    rest.forEach((lg) => {
+      fetchEdges(lg).catch(() => {});
+    });
+  };
+  if (typeof requestIdleCallback === "function") requestIdleCallback(run, { timeout: 2500 });
+  else setTimeout(run, 800);
+}
 async function load() {
   $("table").innerHTML = `<div class="empty">Loading the board…</div>`;
-  try {
-    const colorsUrl = CBB_STATIC ? "static/team_colors.json" : "/static/team_colors.json";
-    TEAM_COLORS = await (await fetch(colorsUrl)).json();
-  } catch (err) {
-    TEAM_COLORS = {};
-  }
   const league = state.league || "cbb";
-  // Static Pages desk serves one pre-baked edges.json (no live API).
-  const edgesUrl = CBB_STATIC
-    ? "edges.json"
-    : `/api/desk/edges?league=${encodeURIComponent(league)}`;
-  const response = await fetch(edgesUrl);
-  state.book = await response.json();
+  const colorsUrl = CBB_STATIC ? "static/team_colors.json" : "/static/team_colors.json";
+  // Parallel: colors are tiny and optional; don't block the board on them.
+  const colorsP = fetch(colorsUrl)
+    .then((r) => (r.ok ? r.json() : {}))
+    .catch(() => ({}));
+  try {
+    const [colors, body] = await Promise.all([colorsP, fetchEdges(league)]);
+    TEAM_COLORS = colors || {};
+    state.book = body;
+  } catch (err) {
+    TEAM_COLORS = await colorsP;
+    $("status").textContent = "Board failed to load. Pull to refresh.";
+    $("table").innerHTML = `<div class="empty">Could not load odds for ${String(league).toUpperCase()}.</div>`;
+    return;
+  }
   const n = (state.book.rows || []).length;
   const tag = league === "all" ? "all leagues" : String(league).toUpperCase();
   $("status").textContent = state.book.error
     ? state.book.error
     : `${n} prices · ${(state.book.games || []).length} games · ${tag}`;
   render();
+  prefetchStaticLeagues(league);
 }
 
 $("marketName").onchange = () => {
@@ -2999,9 +3035,8 @@ async function softReload() {
   // Light poll: drop tipped games + restore logos without a full book pull.
   try {
     const league = state.league || "cbb";
-    const response = await fetch(`/api/desk/edges?league=${encodeURIComponent(league)}&t=${Date.now()}`);
-    if (!response.ok) return;
-    await applyBoard(await response.json());
+    delete _edgesCache[league];
+    await applyBoard(await fetchEdges(league));
   } catch (err) {
     /* keep last board */
   }
