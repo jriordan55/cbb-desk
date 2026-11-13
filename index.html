@@ -487,6 +487,16 @@
     max-height: 18px;
   }
   .box-col .est { margin: 2px 0 8px; color: var(--muted); font-size: 11px; }
+  .box-section { margin-top: 12px; }
+  .box-section:first-of-type { margin-top: 4px; }
+  .box-section h4 {
+    margin: 0 0 4px;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 800;
+  }
   .box-table { width: 100%; border-collapse: collapse; }
   .box-table th, .box-table td {
     padding: 7px 6px;
@@ -2493,14 +2503,34 @@ function boxStatsFor(league) {
   const lg = String(league || "").toLowerCase();
   return (lg === "cfb" || lg === "nfl") ? BOX_STATS_CFB : BOX_STATS_BBALL;
 }
+function isFootballBox(league) {
+  const lg = String(league || "").toLowerCase();
+  return lg === "cfb" || lg === "nfl";
+}
 function boxStat(player, key) {
   if (key === "mpg") return player.mpg;
   const row = player.stats && player.stats[key];
   return row ? row.mean : null;
 }
-function boxNum(value) {
+function boxNum(value, digits = 1) {
   const n = Number(value);
-  return Number.isFinite(n) ? n.toFixed(1) : "";
+  return Number.isFinite(n) ? n.toFixed(digits) : "";
+}
+function boxInt(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? String(Math.round(n)) : "";
+}
+function boxCmpAtt(player) {
+  const cmp = boxStat(player, "completions");
+  const att = boxStat(player, "pass_attempts");
+  if (!Number.isFinite(Number(cmp)) && !Number.isFinite(Number(att))) return "";
+  return `${boxInt(cmp) || "0"}/${boxInt(att) || "0"}`;
+}
+function boxRushAtt(player) {
+  const att = boxStat(player, "rush_attempts");
+  const car = boxStat(player, "carries");
+  const n = Number.isFinite(Number(att)) ? att : car;
+  return boxInt(n);
 }
 function boxShort(name) {
   const parts = String(name || "").split(/\s+/).filter(Boolean);
@@ -2534,7 +2564,97 @@ function boxAccent(desk, side) {
   if (color && other && hexDist(color, other) < 50) color = hexColor(id, true) || color;
   return color || "#001a4d";
 }
+function boxPlayerOut(player, side, injuredKeys) {
+  return injuredKeys && injuredKeys.has(`${String(player.player || "").toLowerCase()}|${player.side || side}`);
+}
+function boxPlayerLabel(player, out) {
+  return `${escapeHtml(boxShort(player.player))}${out ? ` <span class="tag">Out</span>` : ""}`;
+}
+function boxFootballSection(title, headers, rowsHtml) {
+  if (!rowsHtml) return "";
+  return `<div class="box-section">
+    <h4>${escapeHtml(title)}</h4>
+    <table class="box-table">
+      <thead><tr><th class="left">Player</th>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  </div>`;
+}
+function boxFootballColumn(name, logoSrc, players, accent, injuredKeys) {
+  const side = players.length && players[0].side ? players[0].side : "";
+  // Only the starting QB — never list backups in Passing (or as rush crumbs).
+  const passingAll = players
+    .filter((p) => Number(boxStat(p, "pass_attempts")) >= 1.5 || Number(boxStat(p, "passing_yards")) >= 20)
+    .sort((a, b) => (Number(boxStat(b, "passing_yards")) || 0) - (Number(boxStat(a, "passing_yards")) || 0));
+  const passing = passingAll.slice(0, 1);
+  const starterPassKey = passing.length
+    ? String(passing[0].player || passing[0].name || "").toLowerCase().replace(/[^a-z0-9]+/g, "")
+    : "";
+  const backupPassKeys = new Set(
+    passingAll.slice(1).map((p) => String(p.player || p.name || "").toLowerCase().replace(/[^a-z0-9]+/g, ""))
+  );
+  const rushing = players
+    .filter((p) => {
+      const key = String(p.player || p.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+      if (backupPassKeys.has(key)) return false;
+      const att = Number(boxStat(p, "rush_attempts"));
+      const car = Number(boxStat(p, "carries"));
+      const yds = Number(boxStat(p, "rushing_yards"));
+      const pa = Number(boxStat(p, "pass_attempts"));
+      const pyds = Number(boxStat(p, "passing_yards"));
+      // Hide non-starter QBs that only have residual rush/ATD crumbs.
+      if ((pa >= 1.5 || pyds >= 20) && key && key !== starterPassKey) return false;
+      return (Number.isFinite(att) ? att : car) >= 1.5 || yds >= 8;
+    })
+    .sort((a, b) => (Number(boxStat(b, "rushing_yards")) || 0) - (Number(boxStat(a, "rushing_yards")) || 0));
+  const receiving = players
+    .filter((p) => Number(boxStat(p, "receptions")) >= 1.0 || Number(boxStat(p, "receiving_yards")) >= 8)
+    .sort((a, b) => (Number(boxStat(b, "receiving_yards")) || 0) - (Number(boxStat(a, "receiving_yards")) || 0));
+
+  const passRows = passing.map((player) => {
+    const out = boxPlayerOut(player, side, injuredKeys);
+    return `<tr>
+      <td class="left">${boxPlayerLabel(player, out)}</td>
+      <td>${boxCmpAtt(player)}</td>
+      <td class="pts" style="color:${accent}">${boxNum(boxStat(player, "passing_yards"))}</td>
+      <td>${boxNum(boxStat(player, "passing_touchdowns"))}</td>
+    </tr>`;
+  }).join("");
+  const rushRows = rushing.map((player) => {
+    const out = boxPlayerOut(player, side, injuredKeys);
+    return `<tr>
+      <td class="left">${boxPlayerLabel(player, out)}</td>
+      <td>${boxRushAtt(player)}</td>
+      <td class="pts" style="color:${accent}">${boxNum(boxStat(player, "rushing_yards"))}</td>
+      <td>${boxNum(boxStat(player, "rushing_touchdowns"))}</td>
+    </tr>`;
+  }).join("");
+  const recRows = receiving.map((player) => {
+    const out = boxPlayerOut(player, side, injuredKeys);
+    return `<tr>
+      <td class="left">${boxPlayerLabel(player, out)}</td>
+      <td>${boxNum(boxStat(player, "receptions"))}</td>
+      <td class="pts" style="color:${accent}">${boxNum(boxStat(player, "receiving_yards"))}</td>
+      <td>${boxNum(boxStat(player, "receiving_touchdowns"))}</td>
+    </tr>`;
+  }).join("");
+
+  const body = [
+    boxFootballSection("Passing", ["C/ATT", "YDS", "TD"], passRows),
+    boxFootballSection("Rushing", ["CAR", "YDS", "TD"], rushRows),
+    boxFootballSection("Receiving", ["REC", "YDS", "TD"], recRows),
+  ].filter(Boolean).join("") || `<p class="est">No Redzone Labs projections for this side.</p>`;
+
+  return `<section class="box-col">
+    <h3>${logo(logoSrc, name)}${escapeHtml(name)}</h3>
+    <p class="est">Projected box · sportsbook players · ESPN depth</p>
+    ${body}
+  </section>`;
+}
 function boxColumn(name, logoSrc, players, accent, league, injuredKeys) {
+  if (isFootballBox(league)) {
+    return boxFootballColumn(name, logoSrc, players, accent, injuredKeys);
+  }
   const cols = boxStatsFor(league);
   const side = players.length && players[0].side ? players[0].side : "";
   const rows = players.slice().sort((a, b) => {
@@ -2544,11 +2664,11 @@ function boxColumn(name, logoSrc, players, accent, league, injuredKeys) {
     const sum = (p) => cols.reduce((n, [key]) => n + (Number(boxStat(p, key)) || 0), 0);
     return sum(b) - sum(a);
   });
-  const highlight = league === "cfb" || league === "nfl" ? "passing_yards" : "points";
+  const highlight = "points";
   const body = rows.map((player) => {
-    const out = injuredKeys && injuredKeys.has(`${String(player.player || "").toLowerCase()}|${player.side || side}`);
+    const out = boxPlayerOut(player, side, injuredKeys);
     return `<tr>
-    <td class="left">${escapeHtml(boxShort(player.player))}${out ? ` <span class="tag">Out</span>` : ""}</td>
+    <td class="left">${boxPlayerLabel(player, out)}</td>
     ${cols.map(([key]) => {
       const value = boxNum(boxStat(player, key));
       return key === highlight
@@ -2604,10 +2724,26 @@ function boxHtml(payload, desk) {
   const spread = boxSpread(homeName, awayName, game.fair_home_spread);
   const total = boxNum(game.fair_total);
   const poss = boxNum(game.exp_possessions);
+  const stadium = String(game.stadium || game.venue || "").trim();
+  const weather = String(game.weather_description || "").trim() || (() => {
+    if (league !== "nfl" && league !== "cfb") return "";
+    const roof = String(game.weather_roof || "").toLowerCase();
+    if (roof === "dome" || roof === "closed" || roof === "indoor") return "Indoor";
+    const bits = [];
+    const cond = String(game.weather_condition || "").trim();
+    if (cond && !/^\d+$/.test(cond)) bits.push(cond);
+    const temp = Number(game.weather_temp_f);
+    if (Number.isFinite(temp)) bits.push(`${Math.round(temp)} F`);
+    const wind = Number(game.weather_wind_mph);
+    if (Number.isFinite(wind) && wind >= 1) bits.push(`Wind ${Math.round(wind)} mph`);
+    return bits.join(" | ");
+  })();
   const meta = [
     spread,
     total ? `Total ${total}` : "",
     poss && league !== "cfb" && league !== "nfl" ? `${poss} possessions` : "",
+    stadium || "",
+    weather || "",
   ].filter(Boolean);
   return `<div class="box-banner">
       <div class="box-id">${logo(desk && desk.away_logo, awayName)}<b>${escapeHtml(awayName)}</b><i style="background:${boxAccent(desk, "away")}"></i></div>
@@ -2744,6 +2880,29 @@ $("marketName").onchange = () => {
   render();
 };
 
+async function applyBoard(body, tag) {
+  state.book = body || state.book;
+  const n = ((state.book && state.book.rows) || []).length;
+  const games = ((state.book && state.book.games) || []).length;
+  const label = tag || (state.league === "all" ? "all leagues" : String(state.league || "cbb").toUpperCase());
+  $("status").textContent = (state.book && state.book.error)
+    ? state.book.error
+    : `${n} prices · ${games} games · ${label}`;
+  render();
+}
+
+async function softReload() {
+  // Light poll: drop tipped games + restore logos without a full book pull.
+  try {
+    const league = state.league || "cbb";
+    const response = await fetch(`/api/desk/edges?league=${encodeURIComponent(league)}&t=${Date.now()}`);
+    if (!response.ok) return;
+    await applyBoard(await response.json());
+  } catch (err) {
+    /* keep last board */
+  }
+}
+
 if (CBB_STATIC) {
   const refresh = $("refresh");
   if (refresh) refresh.remove();
@@ -2755,12 +2914,7 @@ if (CBB_STATIC) {
     try {
       throw new Error("Live refresh runs on the local desk");
       const body = await response.json();
-      state.book = body;
-      render();
-      const n = (body.rows || []).length;
-      $("status").textContent = body.error
-        ? body.error
-        : `${n} prices · ${body.matched_games || 0} games`;
+      await applyBoard(body);
     } catch (err) {
       $("status").textContent = "Refresh failed. The last board is still up.";
     } finally {
@@ -2768,6 +2922,8 @@ if (CBB_STATIC) {
       $("refresh").textContent = "Refresh odds";
     }
   };
+  // Every 2 minutes: cull live/final games and keep rail logos in sync.
+  setInterval(softReload, 2 * 60 * 1000);
 }
 load();
 </script>
