@@ -598,6 +598,8 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const CBB_STATIC = true;
+const CBB_ASSET_V = "20261113165339";
+const CBB_ASSET_V = "";
 const state = {
   book: null, view: "edges", game: "", league: "cbb", market: "spread", marketName: "all",
   period: "all", side: "all", line: "all", sportsbook: "all", player: "", q: "", clearOnly: false, openKey: "",
@@ -2966,16 +2968,20 @@ document.addEventListener("keydown", (event) => {
 });
 
 const _edgesCache = {};
+function assetV() {
+  return (typeof CBB_ASSET_V === "string" && CBB_ASSET_V) ? `?v=${CBB_ASSET_V}` : "";
+}
 function staticEdgesUrl(league) {
   const lg = String(league || "cbb").toLowerCase();
-  if (lg === "all") return "edges_all.json";
-  if (lg === "cbb") return "edges.json"; // tiny first-paint core (no props)
-  return `edges_${lg}.json`;
+  const q = assetV();
+  if (lg === "all") return `edges_all.json${q}`;
+  if (lg === "cbb") return `edges.json${q}`; // tiny first-paint core (no props)
+  return `edges_${lg}.json${q}`;
 }
 function staticPropsUrl(league) {
   const lg = String(league || "cbb").toLowerCase();
   if (lg === "all") return "";
-  return `edges_${lg}_props.json`;
+  return `edges_${lg}_props.json${assetV()}`;
 }
 async function mergeStaticProps(league, body) {
   if (!CBB_STATIC || !body || !body.props_pending) return body;
@@ -3043,7 +3049,7 @@ function prefetchStaticLeagues(active) {
 async function load() {
   $("table").innerHTML = `<div class="empty">Loading the board…</div>`;
   const league = state.league || "cbb";
-  const colorsUrl = CBB_STATIC ? "static/team_colors.json" : "/static/team_colors.json";
+  const colorsUrl = CBB_STATIC ? `static/team_colors.json${assetV()}` : "/static/team_colors.json";
   // Parallel: colors are tiny and optional; don't block the board on them.
   const colorsP = fetch(colorsUrl)
     .then((r) => (r.ok ? r.json() : {}))
