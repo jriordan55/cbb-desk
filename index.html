@@ -598,7 +598,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const CBB_STATIC = true;
-const CBB_ASSET_V = "20261114100137";
+const CBB_ASSET_V = "20261115121940";
 const CBB_ASSET_V = "";
 const state = {
   book: null, view: "edges", game: "", league: "cbb", market: "spread", marketName: "all",
@@ -772,6 +772,11 @@ const PROP_STAT_LABELS = {
   completions: "Completions",
   rush_rec_yards: "Rush + Rec Yards",
   passing_rushing_yards: "Pass + Rush Yards",
+  longest_rush: "Longest Rush",
+  longest_reception: "Longest Reception",
+  longest_completion: "Longest Completion",
+  interceptions: "Interceptions",
+  field_goals: "Field Goals",
   points: "Points",
   rebounds: "Rebounds",
   assists: "Assists",
@@ -1107,6 +1112,13 @@ function propStatFamily(row) {
     player_receptions: "receptions",
     player_rush_rec_yards: "rush_rec_yards",
     player_passing_rushing_yards: "passing_rushing_yards",
+    player_longest_rush: "longest_rush",
+    player_longest_reception: "longest_reception",
+    player_longest_completion: "longest_completion",
+    player_passing_interceptions: "interceptions",
+    player_interceptions: "interceptions",
+    player_field_goals: "field_goals",
+    player_field_goals_made: "field_goals",
     player_points: "points",
     player_rebounds: "rebounds",
     player_assists: "assists",
@@ -1878,9 +1890,9 @@ function formChartSvg(bet, form) {
     const labelW = Math.max(18, String(label).length * 7.2 + 8);
     const labelX = cx - labelW / 2;
     const labelY = Math.max(6, y - 18);
-    const logoTag = logo
-      ? `<image href="${escapeHtml(logo)}" xlink:href="${escapeHtml(logo)}" x="${(cx - 9).toFixed(1)}" y="${(baseY + 5).toFixed(1)}" width="18" height="18" preserveAspectRatio="xMidYMid meet" />`
-      : `<text x="${cx.toFixed(1)}" y="${(baseY + 16).toFixed(1)}" text-anchor="middle" fill="#6a7380" font-size="10" font-weight="700">${escapeHtml(abbr || "—")}</text>`;
+    // Prefer text abbr over <image> — some WebViews blank the whole SVG when
+    // remote ESPN logos fail CSP / xlink parsing.
+    const logoTag = `<text x="${cx.toFixed(1)}" y="${(baseY + 16).toFixed(1)}" text-anchor="middle" fill="#6a7380" font-size="10" font-weight="700">${escapeHtml(abbr || "—")}</text>`;
     let histMark = "";
     if (Number.isFinite(hist)) {
       const yH = Y(hist);
@@ -1902,8 +1914,9 @@ function formChartSvg(bet, form) {
   }).join("");
   const empty = games.length
     ? ""
-    : `<text x="${(w / 2).toFixed(1)}" y="${(h / 2).toFixed(1)}" text-anchor="middle" fill="#6a7380" font-size="12">Loading last 10 games…</text>`;
-  return `<svg class="form-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Last ${values.length || 10} games vs line">
+    : `<text x="${(w / 2).toFixed(1)}" y="${(h / 2).toFixed(1)}" text-anchor="middle" fill="#6a7380" font-size="12">${form && Array.isArray(form.games) ? "No recent games on file" : "Loading last 10 games…"}</text>`;
+  return `<svg class="form-chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Last ${values.length || 10} games vs line">
+    <rect x="0" y="0" width="${w}" height="${h}" fill="#f7f9fb" />
     <line x1="${padL}" y1="${baseY}" x2="${(w - padR).toFixed(1)}" y2="${baseY}" stroke="#d9dee6" />
     ${guideLines}
     ${bars || empty}
@@ -2577,13 +2590,38 @@ function boxRushAtt(player) {
   return boxInt(n);
 }
 function boxShort(name) {
+  // "Amon-Ra St. Brown" → "A. St. Brown" (not "A. Brown"); "A.J. Brown" stays "A.J. Brown".
   const parts = String(name || "").split(/\s+/).filter(Boolean);
   if (parts.length < 2) return name || "";
   const suffix = /^(jr|sr|ii|iii|iv|v)\.?$/i;
+  const particle = /^(st|ste|van|von|de|del|della|di|da|dos|das|du|la|le|el|mc|mac)\.?$/i;
+  const initials = /^[A-Za-z](\.[A-Za-z])+\.?$/;
   const tail = [];
-  while (parts.length > 1 && suffix.test(parts[parts.length - 1])) tail.unshift(parts.pop().replace(/\.$/, ""));
-  const surname = parts.pop();
-  return [parts[0][0] + ".", surname, ...tail].join(" ");
+  while (parts.length > 1 && suffix.test(parts[parts.length - 1])) {
+    tail.unshift(parts.pop().replace(/\.$/, ""));
+  }
+  const surname = [parts.pop()];
+  while (parts.length > 1 && particle.test(parts[parts.length - 1])) {
+    surname.unshift(parts.pop());
+  }
+  const first = parts[0] || "";
+  const firstShort = initials.test(first) ? first : `${first[0]}.`;
+  return [firstShort, ...surname, ...tail].join(" ");
+}
+function boxShortUnique(names) {
+  /** Prefer short labels, but expand when two players collapse to the same short form. */
+  const list = (names || []).map((n) => String(n || ""));
+  const shorts = list.map((n) => boxShort(n));
+  const counts = {};
+  shorts.forEach((s) => { counts[s] = (counts[s] || 0) + 1; });
+  return list.map((full, i) => {
+    const short = shorts[i];
+    if ((counts[short] || 0) <= 1) return short;
+    // Collision: keep first initial + full remaining tokens (still compact).
+    const parts = full.split(/\s+/).filter(Boolean);
+    if (parts.length < 2) return short;
+    return [`${parts[0][0]}.`, ...parts.slice(1)].join(" ");
+  });
 }
 function boxWhen(desk, game) {
   const text = String((desk && desk.start) || (game && game.game_date) || "");
@@ -2611,8 +2649,11 @@ function boxAccent(desk, side) {
 function boxPlayerOut(player, side, injuredKeys) {
   return injuredKeys && injuredKeys.has(`${String(player.player || "").toLowerCase()}|${player.side || side}`);
 }
-function boxPlayerLabel(player, out) {
-  return `${escapeHtml(boxShort(player.player))}${out ? ` <span class="tag">Out</span>` : ""}`;
+function boxPlayerLabel(player, out, label) {
+  const text = label != null ? label : boxShort(player.player);
+  const q = !out && /questionable/i.test(String(player.injury || player.status || ""));
+  const tag = out ? ` <span class="tag">Out</span>` : (q ? ` <span class="tag">Q</span>` : "");
+  return `${escapeHtml(text)}${tag}`;
 }
 function boxFootballSection(title, headers, rowsHtml) {
   if (!rowsHtml) return "";
@@ -2655,10 +2696,27 @@ function boxFootballColumn(name, logoSrc, players, accent, injuredKeys) {
     .filter((p) => Number(boxStat(p, "receptions")) >= 1.0 || Number(boxStat(p, "receiving_yards")) >= 8)
     .sort((a, b) => (Number(boxStat(b, "receiving_yards")) || 0) - (Number(boxStat(a, "receiving_yards")) || 0));
 
+  // Short labels unique within this team column (St. Brown ≠ A.J. Brown → both "A. Brown").
+  const labelFor = (() => {
+    const pool = [...passing, ...rushing, ...receiving];
+    const seen = new Set();
+    const names = [];
+    pool.forEach((p) => {
+      const n = String(p.player || "");
+      if (!n || seen.has(n)) return;
+      seen.add(n);
+      names.push(n);
+    });
+    const shorts = boxShortUnique(names);
+    const map = {};
+    names.forEach((n, i) => { map[n] = shorts[i]; });
+    return (p) => map[String(p.player || "")] || boxShort(p.player);
+  })();
+
   const passRows = passing.map((player) => {
     const out = boxPlayerOut(player, side, injuredKeys);
     return `<tr>
-      <td class="left">${boxPlayerLabel(player, out)}</td>
+      <td class="left">${boxPlayerLabel(player, out, labelFor(player))}</td>
       <td>${boxCmpAtt(player)}</td>
       <td class="pts" style="color:${accent}">${boxNum(boxStat(player, "passing_yards"))}</td>
       <td>${boxNum(boxStat(player, "passing_touchdowns"))}</td>
@@ -2667,7 +2725,7 @@ function boxFootballColumn(name, logoSrc, players, accent, injuredKeys) {
   const rushRows = rushing.map((player) => {
     const out = boxPlayerOut(player, side, injuredKeys);
     return `<tr>
-      <td class="left">${boxPlayerLabel(player, out)}</td>
+      <td class="left">${boxPlayerLabel(player, out, labelFor(player))}</td>
       <td>${boxRushAtt(player)}</td>
       <td class="pts" style="color:${accent}">${boxNum(boxStat(player, "rushing_yards"))}</td>
       <td>${boxNum(boxStat(player, "rushing_touchdowns"))}</td>
@@ -2676,7 +2734,7 @@ function boxFootballColumn(name, logoSrc, players, accent, injuredKeys) {
   const recRows = receiving.map((player) => {
     const out = boxPlayerOut(player, side, injuredKeys);
     return `<tr>
-      <td class="left">${boxPlayerLabel(player, out)}</td>
+      <td class="left">${boxPlayerLabel(player, out, labelFor(player))}</td>
       <td>${boxNum(boxStat(player, "receptions"))}</td>
       <td class="pts" style="color:${accent}">${boxNum(boxStat(player, "receiving_yards"))}</td>
       <td>${boxNum(boxStat(player, "receiving_touchdowns"))}</td>
@@ -2872,8 +2930,8 @@ async function openBox(id) {
       $("boxBody").innerHTML = boxHtml(payload, desk);
       return;
     }
-    // Always refetch — props/sim can move under the board without a hard reload.
-    const response = await fetch("/api/game/" + encodeURIComponent(id) + "?t=" + Date.now());
+    // Slim box payload skips 100MB+ player-ladder CSVs the table never renders.
+    const response = await fetch("/api/game/" + encodeURIComponent(id) + "?box=1&t=" + Date.now());
     if (!response.ok) throw new Error("missing");
     boxCache[id] = await response.json();
     $("boxBody").innerHTML = boxHtml(boxCache[id], desk);
@@ -3095,8 +3153,20 @@ async function applyBoard(body, tag) {
 async function softReload() {
   // Static Pages board is a snapshot — no live poll.
   if (CBB_STATIC) return;
-  // Light poll: drop tipped games + restore logos without a full book pull.
+  // Light poll: sync NBA outs (resim only when the sit set moves), then
+  // drop tipped games + restore logos without a full book pull.
   try {
+    try {
+      const sync = await fetch("/api/desk/sync-injuries");
+      if (sync.ok) {
+        const note = await sync.json();
+        if (note && note.resimmed) {
+          $("status").textContent = `NBA injuries updated · ${note.injuries || 0} outs · resimmed`;
+        }
+      }
+    } catch (err) {
+      /* injury sync optional — still refresh board */
+    }
     const league = state.league || "cbb";
     delete _edgesCache[league];
     await applyBoard(await fetchEdges(league));
