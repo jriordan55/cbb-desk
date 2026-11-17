@@ -347,6 +347,36 @@
     background: transparent;
     vertical-align: 3px;
   }
+  .slip {
+    position: fixed; right: 16px; bottom: 16px; width: min(380px, calc(100vw - 24px));
+    max-height: min(70vh, 560px); overflow: auto; z-index: 40;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.18); padding: 12px 14px;
+  }
+  .slip h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .slip .slip-leg {
+    display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: start;
+    padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px;
+  }
+  .slip .slip-leg:first-of-type { border-top: 0; }
+  .slip .slip-leg b { display: block; }
+  .slip .slip-leg span { color: var(--muted); font-size: 12px; }
+  .slip .slip-x {
+    border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1;
+  }
+  .slip .slip-meta {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;
+    padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px;
+  }
+  .slip .slip-meta div span { display: block; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
+  .slip .slip-meta div b { font-size: 16px; }
+  .slip .slip-meta .mult-hi { color: #0b7a3b; }
+  .slip .slip-meta .mult-lo { color: #b42318; }
+  .slip .slip-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .slip .slip-actions button { flex: 1; }
+  .slip .slip-err { color: #b42318; font-size: 12px; margin-top: 6px; }
+  .slip .slip-hint { color: var(--muted); font-size: 12px; margin: 0 0 6px; }
+  tr.slip-on td { background: color-mix(in srgb, var(--navy) 10%, transparent); }
   .form-legend .line {
     border-left: 2px dotted var(--ink);
     width: 0;
@@ -595,15 +625,27 @@
     <div id="boxBody"></div>
   </div>
 </div>
+<div id="slip" class="slip" hidden>
+  <h3>Same-game parlay</h3>
+  <p class="slip-hint">Alt-click a row to add a leg. Fair price uses joint sim correlation (PredictQ-style).</p>
+  <div id="slipLegs"></div>
+  <div class="slip-meta" id="slipMeta" hidden></div>
+  <div class="slip-err" id="slipErr" hidden></div>
+  <div class="slip-actions">
+    <button type="button" class="ghost" id="slipClear">Clear</button>
+    <button type="button" id="slipPrice">Price combo</button>
+  </div>
+</div>
 <script>
 const $ = (id) => document.getElementById(id);
 const CBB_STATIC = true;
-const CBB_ASSET_V = "20261116093008";
+const CBB_ASSET_V = "20261117031036";
 const CBB_ASSET_V = "";
 const state = {
   book: null, view: "edges", game: "", league: "cbb", market: "spread", marketName: "all",
   period: "all", side: "all", line: "all", sportsbook: "all", player: "", q: "", clearOnly: false, openKey: "",
   sortKey: "roi", sortDir: "desc",
+  slip: [], slipQuote: null,
 };
 let TEAM_COLORS = {};
 const LEAGUE_CHIPS = [
@@ -2515,7 +2557,8 @@ function tableFor(list) {
       const roiClass = row.roi == null ? "muted" : (row.roi > 0 ? "ev" : "ev neg");
       const key = encodeURIComponent(row.bet.key || "");
       const open = state.openKey === key;
-      return `<tr class="${row.clear ? "clear" : ""} ${open ? "open" : ""}" data-key="${key}">
+      const inSlip = state.slip.some((leg) => leg.key === (row.bet && row.bet.key));
+      return `<tr class="${row.clear ? "clear" : ""} ${open ? "open" : ""} ${inSlip ? "slip-on" : ""}" data-key="${key}">
         <td class="left">${row.game || ""}</td>
         <td class="left"><div class="cell-main">${row.icon}<div><b>${row.name}</b><span>${row.market}</span></div></div></td>
         <td>${row.sideTxt}</td>
@@ -2980,13 +3023,166 @@ function render() {
     };
   });
   $("table").querySelectorAll("tr[data-key]").forEach((tr) => {
-    tr.onclick = () => {
+    tr.onclick = (event) => {
       const key = tr.getAttribute("data-key");
+      if (event.altKey || event.metaKey) {
+        const bet = list.find((row) => encodeURIComponent(row.key || "") === key);
+        if (bet) toggleSlipLeg(bet);
+        return;
+      }
       state.openKey = state.openKey === key ? "" : key;
       render();
       if (state.openKey) loadPropForm(state.openKey);
     };
   });
+  renderSlip();
+}
+
+function slipLegFromBet(bet) {
+  const pick = bet && bet.pick;
+  if (!pick) return null;
+  const league = rowLeague(pick);
+  const gameId = String(pick.sim_id || pick.game_id || "");
+  if (!gameId) return null;
+  const kind = String(pick.kind || "prop");
+  let side = sideOf(pick) || bet.side || "over";
+  let line = pick.line != null ? Number(pick.line) : null;
+  let stat = "";
+  let market = String(pick.market || pick.selection || "");
+  if (kind === "prop") {
+    stat = String(pick.stat || pick.market || market || "").toLowerCase().replace(/\s+/g, "_");
+  } else if (kind === "spread") {
+    side = spreadSeat(pick) || side || "home";
+  } else if (kind === "total" || kind === "team_total") {
+    side = sideOf(pick) || "over";
+  } else if (kind === "ml") {
+    side = spreadSeat(pick) || sideOf(pick) || "home";
+    line = null;
+  }
+  const prob = pick.model_prob != null
+    ? Number(pick.model_prob)
+    : (pick.over_prob != null && side === "over"
+      ? Number(pick.over_prob)
+      : (pick.under_prob != null && side === "under" ? Number(pick.under_prob) : null));
+  return {
+    key: bet.key,
+    league,
+    game_id: gameId,
+    kind,
+    player: String(pick.player || ""),
+    team: String(pick.team || ""),
+    stat,
+    market,
+    side,
+    line,
+    prob: Number.isFinite(prob) ? prob : null,
+    label: `${bet.name || pick.selection || pick.player || kind} · ${bet.sideTxt || side}${bet.lineTxt ? " " + bet.lineTxt : ""}`,
+    game: String(pick.game || ""),
+  };
+}
+
+function toggleSlipLeg(bet) {
+  const leg = slipLegFromBet(bet);
+  if (!leg) {
+    $("slipErr").hidden = false;
+    $("slipErr").textContent = "Need a sim-linked quote (sim_id) to price this leg.";
+    $("slip").hidden = false;
+    return;
+  }
+  if (state.slip.length && (state.slip[0].game_id !== leg.game_id || state.slip[0].league !== leg.league)) {
+    state.slip = [];
+  }
+  const idx = state.slip.findIndex((row) => row.key === leg.key);
+  if (idx >= 0) state.slip.splice(idx, 1);
+  else {
+    if (state.slip.length >= 8) return;
+    state.slip.push(leg);
+  }
+  state.slipQuote = null;
+  render();
+}
+
+function renderSlip() {
+  const panel = $("slip");
+  if (!panel) return;
+  if (!state.slip.length) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  $("slipLegs").innerHTML = state.slip.map((leg, i) => `
+    <div class="slip-leg">
+      <div><b>${escapeHtml(leg.label)}</b><span>${escapeHtml(leg.game || "")} · ${escapeHtml(String(leg.league || "").toUpperCase())}</span></div>
+      <button type="button" class="slip-x" data-slip-i="${i}" aria-label="Remove">×</button>
+    </div>`).join("");
+  $("slipLegs").querySelectorAll("[data-slip-i]").forEach((btn) => {
+    btn.onclick = () => {
+      state.slip.splice(Number(btn.dataset.slipI), 1);
+      state.slipQuote = null;
+      render();
+    };
+  });
+  const quote = state.slipQuote;
+  const meta = $("slipMeta");
+  const err = $("slipErr");
+  if (quote && quote.ok) {
+    err.hidden = true;
+    meta.hidden = false;
+    const mult = quote.multiplier;
+    const multClass = mult == null ? "" : (mult >= 1.05 ? "mult-hi" : (mult <= 0.95 ? "mult-lo" : ""));
+    const hist = quote.hist_multiplier;
+    const arch = quote.hist_archetype ? String(quote.hist_archetype).replace(/_/g, " ") : "";
+    meta.innerHTML = `
+      <div><span>Fair combo</span><b>${odds(quote.fair_american)}</b> · ${(100 * quote.joint_p).toFixed(1)}¢</div>
+      <div><span>Independence</span><b>${odds(quote.indep_american)}</b> · ${(100 * quote.indep_p).toFixed(1)}¢</div>
+      <div><span>Multiplier</span><b class="${multClass}">${mult == null ? "—" : mult.toFixed(2) + "×"}</b></div>
+      <div><span>History${arch ? " · " + escapeHtml(arch) : ""}</span><b>${hist == null ? "—" : Number(hist).toFixed(2) + "×"}</b> <span style="font-size:11px;color:var(--muted)">${quote.hist_n ? "n=" + quote.hist_n : ""}</span></div>`;
+  } else {
+    meta.hidden = true;
+    if (quote && quote.error) {
+      err.hidden = false;
+      err.textContent = quote.error;
+    } else {
+      err.hidden = true;
+    }
+  }
+}
+
+async function priceSlip() {
+  if (state.slip.length < 2) {
+    state.slipQuote = { ok: false, error: "Add at least two legs from the same game." };
+    renderSlip();
+    return;
+  }
+  const first = state.slip[0];
+  $("slipErr").hidden = false;
+  $("slipErr").textContent = "Pricing…";
+  try {
+    const response = await fetch("/api/desk/parlay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        league: first.league,
+        game_id: first.game_id,
+        sims: 20000,
+        legs: state.slip.map((leg) => ({
+          kind: leg.kind,
+          side: leg.side,
+          line: leg.line,
+          player: leg.player,
+          team: leg.team,
+          stat: leg.stat,
+          market: leg.market,
+          prob: leg.prob,
+          label: leg.label,
+        })),
+      }),
+    });
+    state.slipQuote = await response.json();
+  } catch (exc) {
+    state.slipQuote = { ok: false, error: String(exc || "parlay failed") };
+  }
+  renderSlip();
 }
 
 async function loadPropForm(openKey) {
@@ -3021,6 +3217,12 @@ $("boxClose").onclick = () => $("boxModal").classList.remove("open");
 $("boxModal").onclick = (event) => {
   if (event.target.id === "boxModal") $("boxModal").classList.remove("open");
 };
+$("slipClear").onclick = () => {
+  state.slip = [];
+  state.slipQuote = null;
+  render();
+};
+$("slipPrice").onclick = () => { priceSlip(); };
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") $("boxModal").classList.remove("open");
 });
