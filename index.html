@@ -543,7 +543,7 @@
     font-weight: 700;
   }
   .box-table th.left, .box-table td.left { text-align: left; font-weight: 600; }
-  .box-table td.pts { font-weight: 800; }
+  .box-table td.pts { font-weight: 800; color: var(--ink); }
   .box-injuries {
     margin: 0 18px 16px;
     padding: 10px 12px;
@@ -639,7 +639,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const CBB_STATIC = true;
-const CBB_ASSET_V = "20261117031036";
+const CBB_ASSET_V = "20261118121916";
 const CBB_ASSET_V = "";
 const state = {
   book: null, view: "edges", game: "", league: "cbb", market: "spread", marketName: "all",
@@ -651,7 +651,6 @@ let TEAM_COLORS = {};
 const LEAGUE_CHIPS = [
   ["all", "All leagues"],
   ["cbb", "CBB"],
-  ["cfb", "CFB"],
   ["nfl", "NFL"],
   ["nba", "NBA"],
 ];
@@ -682,33 +681,49 @@ const VIEW_CHIPS = [
   ["clear", "Clear edges"],
 ];
 // Shown prices: Sim on modeled markets; Bettor Odds on main props + full-game ML/spread/total.
-// No-vig fair is the average of each book's devigged price.
+// No-vig fair is Pinnacle de-vig when posted; otherwise market de-vig across books.
 // Expected ROI = P(win) × decimal payout − 1 (Prop Pricing Model).
 const BOOKS = {
-  onyx: { name: "Onyx", src: "static/books/onyx.png" },
-  fliff: { name: "Fliff", src: "static/books/fliff.png" },
+  onyx: { name: "Onyx", src: "static/books/onyx.webp" },
+  fliff: { name: "Fliff", src: "static/books/fliff.webp" },
   fanatics: { name: "Fanatics", src: "static/books/fanatics.png" },
   draftkings: { name: "DraftKings", src: "static/books/draftkings.png" },
   fanduel: { name: "FanDuel", src: "static/books/fanduel.png" },
   betmgm: { name: "BetMGM", src: "static/books/betmgm.png" },
   caesars: { name: "Caesars", src: "static/books/caesars.png" },
-  pinnacle: { name: "Pinnacle", src: "static/books/pinnacle.png" },
+  pinnacle: { name: "Pinnacle", src: "static/books/pinnacle.webp" },
   circa: { name: "Circa", src: "static/books/circa.png" },
-  novig: { name: "Novig", src: "static/books/novig.png" },
-  underdog: { name: "Underdog", src: "static/books/underdog.png" },
+  novig: { name: "Novig", src: "static/books/novig.webp" },
+  underdog: { name: "Underdog", src: "static/books/underdog.webp" },
+  courtside: { name: "Courtside", src: "static/books/courtside.webp" },
+  kalshi: { name: "Kalshi", src: "static/books/kalshi.webp" },
+  polymarket: { name: "Polymarket", src: "static/books/polymarket.webp" },
+  pick6: { name: "Pick6", src: "static/books/pick6.webp" },
+  prizepicks: { name: "PrizePicks", src: "static/books/prizepicks.webp" },
+  sleeper: { name: "Sleeper", src: "static/books/sleeper.webp" },
+  dk_predictions: { name: "DK Predictions", src: "static/books/dk_predictions.webp" },
+  underdog_predict: { name: "Underdog Predict", src: "static/books/underdog_predict.webp" },
 };
 const BOOK_LOCAL = {
-  fliff: "/static/books/fliff.png",
+  fliff: "/static/books/fliff.webp",
   fanatics: "/static/books/fanatics.png",
   draftkings: "/static/books/draftkings.png",
   fanduel: "/static/books/fanduel.png",
   betmgm: "/static/books/betmgm.png",
   caesars: "/static/books/caesars.png",
-  pinnacle: "/static/books/pinnacle.png",
+  pinnacle: "/static/books/pinnacle.webp",
   circa: "/static/books/circa.png",
-  novig: "/static/books/novig.png",
-  underdog: "/static/books/underdog.png",
-  onyx: "/static/books/onyx.png",
+  novig: "/static/books/novig.webp",
+  underdog: "/static/books/underdog.webp",
+  onyx: "/static/books/onyx.webp",
+  courtside: "/static/books/courtside.webp",
+  kalshi: "/static/books/kalshi.webp",
+  polymarket: "/static/books/polymarket.webp",
+  pick6: "/static/books/pick6.webp",
+  prizepicks: "/static/books/prizepicks.webp",
+  sleeper: "/static/books/sleeper.webp",
+  dk_predictions: "/static/books/dk_predictions.webp",
+  underdog_predict: "/static/books/underdog_predict.webp",
 };
 function rememberBook(row) {
   const key = String((row && row.source) || "");
@@ -1092,7 +1107,7 @@ function propPeriod(row) {
 function periodChipItems() {
   // Full Game + 1H apply to every league; 1Q applies to football + NBA (not CBB).
   const league = state.league || "cbb";
-  const allowQ1 = league === "all" || league === "nfl" || league === "cfb" || league === "nba";
+  const allowQ1 = league === "all" || league === "nfl" || league === "nba";
   const items = PERIOD_CHIPS.filter(([value]) => value !== "q1" || allowQ1);
   if (state.period === "q1" && !allowQ1) state.period = "all";
   return items;
@@ -1169,9 +1184,33 @@ function propStatFamily(row) {
     player_blocks: "blocks",
     player_turnovers: "turnovers",
     player_pra: "pra",
+    player_points_rebounds_assists: "pra",
+    player_points_and_rebounds_and_assists: "pra",
+    player_pts_rebs_asts: "pra",
+    player_pts_rebs_ast: "pra",
+    player_1q_pra: "pra",
+    player_points_rebounds: "points_rebounds",
+    player_1q_points_rebounds: "points_rebounds",
+    player_points_assists: "points_assists",
+    player_1q_points_assists: "points_assists",
+    player_rebounds_assists: "rebounds_assists",
+    player_rebounds_and_assists: "rebounds_assists",
+    player_assists_rebounds: "rebounds_assists",
+    player_1q_rebounds_assists: "rebounds_assists",
+    player_1q_points: "points",
+    player_1st_quarter_points: "points",
+    player_1q_rebounds: "rebounds",
+    player_1st_quarter_rebounds: "rebounds",
+    player_1q_assists: "assists",
+    player_1st_quarter_assists: "assists",
   };
   if (codeMap[code]) return codeMap[code];
-  const stripped = code.replace(/^player_/, "");
+  // Text fallbacks so "Points And Rebounds And Assists" collapses with PRA.
+  if (/\bpra\b|points?\s+and\s+rebounds?\s+and\s+assists?|pts?\s+rebs?\s+asts?/.test(text)) return "pra";
+  if (/points?\s+and\s+rebounds?|points?\s*\+\s*rebounds?|pts?\s*rebs?/.test(text) && !/assist/.test(text)) return "points_rebounds";
+  if (/points?\s+and\s+assists?|points?\s*\+\s*assists?|pts?\s*asts?/.test(text) && !/rebound/.test(text)) return "points_assists";
+  if (/rebounds?\s+and\s+assists?|assists?\s+rebounds?|rebs?\s*asts?/.test(text) && !/point/.test(text)) return "rebounds_assists";
+  const stripped = code.replace(/^player_/, "").replace(/^1q_/, "").replace(/^1st_quarter_/, "");
   if (PROP_STAT_LABELS[stripped]) return stripped;
   return stripped || market.replace(/\s+/g, "_") || "prop";
 }
@@ -1390,9 +1429,10 @@ const MARKET_NAME_ORDER = [
   "Moneyline", "Spread", "Total", "Team Total",
   "1st Half Moneyline", "1st Half Spread", "1st Half Total", "1st Half Team Total",
   "2nd Half Moneyline", "2nd Half Spread", "2nd Half Total",
-  "Points", "Rebounds", "Assists", "Three-Pointers Made", "Steals", "Blocked Shots", "Turnovers",
+  "Points", "Rebounds", "Assists",
   "Points + Rebounds + Assists", "Points + Rebounds", "Points + Assists", "Rebounds + Assists",
-  "Double-Double",
+  "1Q Points", "1Q Rebounds", "1Q Assists",
+  "1Q Points + Rebounds + Assists", "1Q Points + Rebounds", "1Q Points + Assists", "1Q Rebounds + Assists",
   "Anytime TD", "Passing Touchdowns", "Rushing Touchdowns", "Receiving Touchdowns",
   "Passing Yards", "Rushing Yards", "Receiving Yards", "Receptions",
   "Rush + Rec Yards", "Pass + Rush Yards",
@@ -1687,6 +1727,18 @@ function hexDist(a, b) {
   const parts = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
   const left = parts(a), right = parts(b);
   return Math.hypot(left[0] - right[0], left[1] - right[1], left[2] - right[2]);
+}
+function hexLuma(hex) {
+  const c = asHex(hex);
+  if (!c) return 1;
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16) / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+/** Team accent safe for text on the light desk panel (never white-on-white). */
+function readableAccent(hex, fallback = "#001a4d") {
+  const c = asHex(hex);
+  if (!c) return fallback;
+  return hexLuma(c) > 0.62 ? fallback : c;
 }
 function teamNorm(name) {
   const raw = String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -2371,8 +2423,6 @@ const SORT_COLS_ALL = [
   ["name", "Market"],
   ["side", "Side"],
   ["line", "Line"],
-  ["hist", "Hist Line"],
-  ["z", "Z"],
   ["proj", "Proj"],
   ["xmin", "xMin"],
   ["l5", "L10 Avg"],
@@ -2384,7 +2434,7 @@ const SORT_COLS_ALL = [
   ["roi", "Exp ROI"],
   ["qk", "QK"],
 ];
-const PROP_ONLY_COLS = new Set(["hist", "z", "l5", "xmin"]);
+const PROP_ONLY_COLS = new Set(["l5", "xmin"]);
 const BASKETBALL_PROP_COLS = new Set(["xmin"]);
 function showXminCol() {
   if (state.market !== "prop") return false;
@@ -2392,7 +2442,7 @@ function showXminCol() {
   return lg === "all" || lg === "nba" || lg === "cbb";
 }
 function sortCols() {
-  // Hist / Z / L10 are player-prop columns; xMin is NBA/CBB props only.
+  // L10 is player-prop only; xMin is NBA/CBB props only.
   if (state.market === "prop") {
     if (showXminCol()) return SORT_COLS_ALL;
     return SORT_COLS_ALL.filter(([key]) => !BASKETBALL_PROP_COLS.has(key));
@@ -2405,7 +2455,7 @@ function sortValue(row, key) {
   if (key === "name") return `${row.name} ${row.market}`.toLowerCase();
   if (key === "side") return String(row.side || "").toLowerCase();
   if (key === "book") return String(row.book || "").toLowerCase();
-  if (key === "line" || key === "hist" || key === "z" || key === "proj" || key === "xmin" || key === "l5" || key === "model" || key === "sim" || key === "labs" || key === "fair" || key === "odds" || key === "roi" || key === "ev" || key === "qk") {
+  if (key === "line" || key === "proj" || key === "xmin" || key === "l5" || key === "model" || key === "sim" || key === "labs" || key === "fair" || key === "odds" || key === "roi" || key === "ev" || key === "qk") {
     const n = Number(row[key === "ev" ? "roi" : key]);
     return Number.isFinite(n) ? n : (state.sortDir === "asc" ? Infinity : -Infinity);
   }
@@ -2430,22 +2480,18 @@ function sortHeader(key, label) {
   const active = state.sortKey === key || (key === "roi" && state.sortKey === "ev");
   const arrow = !active ? "" : (state.sortDir === "asc" ? "▲" : "▼");
   const tip = key === "fair"
-    ? ` title="Average price after each book's vig is removed"`
+    ? ` title="Pinnacle two-way de-vig when available; otherwise market de-vig across books"`
     : (key === "roi"
       ? ` title="Expected ROI per unit staked = win% × decimal payout − 1"`
       : (key === "proj"
         ? ` title="Model projection. Spreads use line signs (− favorite / + dog). Props are points/yards/TDs."`
         : (key === "l5"
           ? ` title="Last 10 games average of the actual result for this market (this season for college)"`
-          : (key === "hist"
-            ? ` title="Average posted/closing line this season from The Odds API + desk history. College uses whatever games are available."`
-            : (key === "z"
-              ? ` title="0–100 score of current line vs hist (50 = at historical mean). College uses this-season sample; NFL/NBA prefer n≥20."`
-              : (key === "labs"
-                ? ` title="Bettor Odds usage projection (props) or board tip (ML/spread/total). Props are priced in Sim from this usage."`
-                : (key === "sim"
-                  ? ` title="Sim price: projection, American odds, and win% (Labs usage folded into the mean when available)"`
-                  : "")))))));
+          : (key === "labs"
+            ? ` title="Bettor Odds usage projection (props) or board tip (ML/spread/total). Props are priced in Sim from this usage."`
+            : (key === "sim"
+              ? ` title="Sim price: projection, American odds, and win% (Labs usage folded into the mean when available)"`
+              : "")))));
   return `<th class="${key === "game" || key === "name" ? "left " : ""}${active ? "active" : ""}" data-sort="${key}"${tip}>${label}<span class="arrow">${arrow}</span></th>`;
 }
 
@@ -2563,8 +2609,6 @@ function tableFor(list) {
         <td class="left"><div class="cell-main">${row.icon}<div><b>${row.name}</b><span>${row.market}</span></div></div></td>
         <td>${row.sideTxt}</td>
         <td>${row.lineTxt}</td>
-        ${propCols ? `<td>${row.histTxt || ""}</td>` : ""}
-        ${propCols ? `<td class="${row.z == null ? "" : (row.z >= 70 ? "ev" : (row.z <= 30 ? "ev neg" : ""))}">${row.zTxt || ""}</td>` : ""}
         <td>${row.projTxt || ""}</td>
         ${showXminCol() ? `<td>${row.xminTxt || ""}</td>` : ""}
         ${propCols ? `<td>${row.l5Txt || ""}</td>` : ""}
@@ -2586,8 +2630,7 @@ const BOX_STATS_BBALL = [
   ["rebounds", "Reb"],
   ["assists", "Ast"],
   ["threes", "3PM"],
-  ["steals", "Stl"],
-  ["turnovers", "TO"],
+  ["pra", "PRA"],
 ];
 const BOX_STATS_CFB = [
   ["passing_yards", "Pass"],
@@ -2610,7 +2653,19 @@ function isFootballBox(league) {
 function boxStat(player, key) {
   if (key === "mpg") return player.mpg;
   const row = player.stats && player.stats[key];
-  return row ? row.mean : null;
+  if (row != null && row.mean != null && Number.isFinite(Number(row.mean))) {
+    return Number(row.mean);
+  }
+  // PTS must never blank out when PRA / REB / AST are present (board fallback gaps).
+  if (key === "points" && player && player.stats) {
+    const pra = player.stats.pra && Number(player.stats.pra.mean);
+    const reb = player.stats.rebounds && Number(player.stats.rebounds.mean);
+    const ast = player.stats.assists && Number(player.stats.assists.mean);
+    if (Number.isFinite(pra) && Number.isFinite(reb) && Number.isFinite(ast)) {
+      return Math.max(0, pra - reb - ast);
+    }
+  }
+  return null;
 }
 function boxNum(value, digits = 1) {
   const n = Number(value);
@@ -2686,8 +2741,13 @@ function boxAccent(desk, side) {
   const id = desk ? (side === "home" ? desk.home_id : desk.away_id) : "";
   let color = hexColor(id);
   const other = hexColor(desk ? (side === "home" ? desk.away_id : desk.home_id) : "");
-  if (color && other && hexDist(color, other) < 50) color = hexColor(id, true) || color;
-  return color || "#001a4d";
+  // Near-identical primaries (Ark/IU crimson) used to flip to white alt — fine for
+  // logo chips, lethal for PTS text on the white box panel. Prefer a readable alt.
+  if (color && other && hexDist(color, other) < 50) {
+    const alt = hexColor(id, true);
+    if (alt && hexLuma(alt) <= 0.62) color = alt;
+  }
+  return readableAccent(color || "#001a4d");
 }
 function boxPlayerOut(player, side, injuredKeys) {
   return injuredKeys && injuredKeys.has(`${String(player.player || "").toLowerCase()}|${player.side || side}`);
