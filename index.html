@@ -639,7 +639,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const CBB_STATIC = true;
-const CBB_ASSET_V = "20261118121916";
+const CBB_ASSET_V = "20261119025229";
 const CBB_ASSET_V = "";
 const state = {
   book: null, view: "edges", game: "", league: "cbb", market: "spread", marketName: "all",
@@ -704,6 +704,12 @@ const BOOKS = {
   dk_predictions: { name: "DK Predictions", src: "static/books/dk_predictions.webp" },
   underdog_predict: { name: "Underdog Predict", src: "static/books/underdog_predict.webp" },
 };
+// Always show these chips (BestBook selected set) even when a book is empty.
+const SELECTED_BOOK_CHIPS = [
+  "onyx", "fliff", "pinnacle", "novig", "kalshi", "polymarket",
+  "pick6", "prizepicks", "sleeper", "dk_predictions",
+  "underdog", "underdog_predict", "courtside",
+];
 const BOOK_LOCAL = {
   fliff: "/static/books/fliff.webp",
   fanatics: "/static/books/fanatics.png",
@@ -1511,15 +1517,21 @@ function bookChipItems() {
   });
   const items = [["all", "All books"]];
   const seen = new Set();
+  SELECTED_BOOK_CHIPS.forEach((key) => {
+    items.push([key, bookMark(key)]);
+    seen.add(key);
+  });
   Object.keys(BOOKS).forEach((key) => {
-    if (!present.has(key)) return;
+    if (seen.has(key) || !present.has(key)) return;
     items.push([key, bookMark(key)]);
     seen.add(key);
   });
   [...present].sort().forEach((key) => {
     if (!seen.has(key)) items.push([key, bookMark(key)]);
   });
-  if (state.sportsbook !== "all" && !present.has(state.sportsbook)) state.sportsbook = "all";
+  if (state.sportsbook !== "all" && !present.has(state.sportsbook) && !SELECTED_BOOK_CHIPS.includes(state.sportsbook)) {
+    state.sportsbook = "all";
+  }
   return items;
 }
 
@@ -1657,17 +1669,26 @@ function renderGames() {
     counts[id] = (counts[id] || 0) + 1;
     total += 1;
   });
+  // Any priced row for the game (every market) — sidebar must not hide a
+  // matchup just because the active chip is Props / Spreads / etc.
+  const pricedIds = new Set();
+  (state.book.rows || []).forEach((row) => {
+    if (!baseVisible(row)) return;
+    if (row.sim_id) pricedIds.add(String(row.sim_id));
+    if (row.game) pricedIds.add(String(row.game));
+  });
   const shown = games.filter((g) => {
     if (state.league !== "all" && String(g.league || "cbb").toLowerCase() !== state.league) return false;
     const day = String(g.start || "").slice(0, 10);
     if (day && day < todayISO()) return false;
     if (tipoffPassed(g.start)) return false;
     const id = g.id || g.game;
-    // CBB modeled slate can appear even before prices; other leagues need posted prices.
-    const hasPrices = (counts[g.id] || counts[g.game] || 0) > 0;
-    if (String(g.league || "cbb").toLowerCase() !== "cbb" && !hasPrices && state.game !== id) return false;
-    if (String(g.league || "cbb").toLowerCase() === "cbb" && g.sim_away == null && !hasPrices && state.game !== id) return false;
-    return hasPrices || state.game === id || (String(g.league || "cbb").toLowerCase() === "cbb" && g.sim_away != null);
+    const hasViewPrices = (counts[g.id] || counts[g.game] || 0) > 0;
+    const hasAnyPrice = pricedIds.has(String(g.id || "")) || pricedIds.has(String(g.game || ""));
+    const modeled = g.sim_away != null || g.sim_home != null;
+    // Keep the full modeled slate visible for every league (NBA used to hide
+    // unpriced / other-market games). Book-only stubs still need a price.
+    return hasViewPrices || hasAnyPrice || modeled || state.game === id;
   });
   $("games").innerHTML = `<button class="game${state.game === "" ? " active" : ""}" data-game="">
       <span></span><div><b>All games</b><small>${state.clearOnly ? "Fair edge · 20%+" : "Posted markets"}</small></div><span></span><span></span>
@@ -2098,7 +2119,7 @@ function fairSource(bet) {
 }
 
 function isBettorOddsMarket(quote) {
-  /** Main player props + full-game ML / spread / total only. */
+  /** Player props (any posted line) + full-game ML / spread / total. */
   if (!quote) return false;
   const kind = String(quote.kind || "");
   const market = String(quote.market || "").toLowerCase();
@@ -2106,7 +2127,9 @@ function isBettorOddsMarket(quote) {
   const blob = `${market} ${code}`;
   if (/half|1st|2nd|3rd|4th|quarter|\b1q\b|\b2q\b|\b3q\b|\b4q\b/.test(blob)) return false;
   if (/\bsacks?\b|\binterceptions?\b/.test(blob) && kind === "total") return false;
-  if (kind === "prop") return !isAltLine(quote);
+  // Show Bettor Odds on every prop ladder rung when Labs has a mean — not only
+  // the consensus main — so the column isn't blank on Pick6/UD-style lines.
+  if (kind === "prop") return true;
   if (kind === "ml" || kind === "spread" || kind === "total") {
     if (kind !== "ml" && isAltLine(quote)) return false;
     return true;
