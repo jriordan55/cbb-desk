@@ -640,7 +640,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const CBB_STATIC = true;
-const CBB_ASSET_V = "20261120025923";
+const CBB_ASSET_V = "20261121033017";
 const CBB_ASSET_V = "";
 const state = {
   book: null, view: "edges", game: "", league: "cbb", market: "spread", marketName: "all",
@@ -964,11 +964,21 @@ function quarterKelly(prob, price, bankroll = BANKROLL) {
   if (!Number.isFinite(stake) || stake <= 0) return null;
   return stake;
 }
-function qkTxt(prob, price) {
+function stakeFromRow(row, prob, price) {
+  // Server stake (arkndjl one-per-player + slate budget) wins when present.
+  if (row && row.stake_skip) return { stake: 0, skip: true, note: row.stake_note || "skip" };
+  if (row && row.stake_usd != null && Number.isFinite(Number(row.stake_usd))) {
+    return { stake: Number(row.stake_usd), skip: false, note: row.stake_note || "" };
+  }
   const stake = quarterKelly(prob, price);
-  if (stake == null) return "";
-  if (stake < 1) return "<$1";
-  return "$" + Math.round(stake);
+  return { stake, skip: false, note: "" };
+}
+function qkTxt(prob, price, row) {
+  const info = stakeFromRow(row, prob, price);
+  if (info.skip) return "—";
+  if (info.stake == null) return "";
+  if (info.stake < 1) return "<$1";
+  return "$" + Math.round(info.stake);
 }
 function isMoneyline(bet) {
   return (bet.pick && bet.pick.kind) === "ml";
@@ -990,8 +1000,17 @@ function sanePrice(price, source, row) {
     return true;
   }
   // Big chalk moneylines (Ohio St -6500 etc.) are real — only reject absurd non-ML juice.
+  // Exchange mains (Novig) sometimes post stale last-trade +900 on a spread; kill those.
   const kind = String((row && row.kind) || "");
-  const limit = kind === "ml" ? 100000 : 2500;
+  const src = String(source || "").toLowerCase();
+  const exchange = src === "novig" || src === "kalshi" || src === "polymarket";
+  let limit = 2500;
+  if (kind === "ml") limit = 100000;
+  else if (kind === "spread" || kind === "total" || kind === "team_total") {
+    limit = exchange ? 350 : 600;
+  } else if (kind === "prop" && exchange) {
+    limit = 1500;
+  }
   if (Math.abs(n) > limit) return false;
   return true;
 }
@@ -1050,19 +1069,27 @@ function oppositePrice(row) {
 }
 function quoteQK(row) {
   if (!row || row.book == null || row.model_prob == null) return "—";
-  return qkTxt(row.model_prob, row.book);
+  return qkTxt(row.model_prob, row.book, row);
 }
 function twoSidedQK(bet, book) {
   const p = sideProbs(bet);
-  const overStake = book.over != null && p.modelOver != null ? quarterKelly(p.modelOver, book.over) : null;
-  const underStake = book.under != null && p.modelUnder != null ? quarterKelly(p.modelUnder, book.under) : null;
+  const overStake = book.over != null && p.modelOver != null
+    ? stakeFromRow(book.over, p.modelOver, book.over).stake
+    : null;
+  const underStake = book.under != null && p.modelUnder != null
+    ? stakeFromRow(book.under, p.modelUnder, book.under).stake
+    : null;
   if (overStake == null && underStake == null) return "—";
-  if (underStake == null || (overStake != null && overStake >= underStake)) return qkTxt(p.modelOver, book.over);
-  return qkTxt(p.modelUnder, book.under);
+  if (underStake == null || (overStake != null && overStake >= underStake)) return qkTxt(p.modelOver, book.over, book.over);
+  return qkTxt(p.modelUnder, book.under, book.under);
 }
 function spreadBookQK(book) {
-  const awayStake = book.away && book.away.model_prob != null ? quarterKelly(book.away.model_prob, book.away.book) : null;
-  const homeStake = book.home && book.home.model_prob != null ? quarterKelly(book.home.model_prob, book.home.book) : null;
+  const awayStake = book.away && book.away.model_prob != null
+    ? stakeFromRow(book.away, book.away.model_prob, book.away.book).stake
+    : null;
+  const homeStake = book.home && book.home.model_prob != null
+    ? stakeFromRow(book.home, book.home.model_prob, book.home.book).stake
+    : null;
   if (awayStake == null && homeStake == null) return "—";
   if (homeStake == null || (awayStake != null && awayStake >= homeStake)) return quoteQK(book.away);
   return quoteQK(book.home);
@@ -1298,13 +1325,17 @@ function bookMark(source) {
   return `<span class="book-inline">${img}${book.name}</span>`;
 }
 function propPeriod(row) {
-  const text = `${(row && row.market_code) || ""} ${(row && row.market) || ""}`.toLowerCase();
-  if (/\b1st_quarter\b|1st quarter|first quarter|\bq1\b|\b1q\b/.test(text)) return "q1";
-  if (/\b2nd_quarter\b|2nd quarter|second quarter|\bq2\b|\b2q\b/.test(text)) return "q2";
-  if (/\b3rd_quarter\b|3rd quarter|third quarter|\bq3\b|\b3q\b/.test(text)) return "q3";
-  if (/\b4th_quarter\b|4th quarter|fourth quarter|\bq4\b|\b4q\b/.test(text)) return "q4";
-  if (/\b1st_half\b|1st half|first half|\bh1\b|\b1h\b/.test(text)) return "h1";
-  if (/\b2nd_half\b|2nd half|second half|\bh2\b|\b2h\b/.test(text)) return "h2";
+  // Normalize underscores so player_1h_rush_yards matches like "1h rush yards".
+  // Word-boundary \\b1h\\b fails on 1h_… because "_" counts as a word char.
+  const text = `${(row && row.market_code) || ""} ${(row && row.market) || ""}`
+    .toLowerCase()
+    .replace(/_/g, " ");
+  if (/\b1st quarter\b|first quarter|\bq1\b|\b1q\b/.test(text)) return "q1";
+  if (/\b2nd quarter\b|second quarter|\bq2\b|\b2q\b/.test(text)) return "q2";
+  if (/\b3rd quarter\b|third quarter|\bq3\b|\b3q\b/.test(text)) return "q3";
+  if (/\b4th quarter\b|fourth quarter|\bq4\b|\b4q\b/.test(text)) return "q4";
+  if (/\b1st half\b|first half|\bh1\b|\b1h\b/.test(text)) return "h1";
+  if (/\b2nd half\b|second half|\bh2\b|\b2h\b/.test(text)) return "h2";
   return "fg";
 }
 function periodChipItems() {
@@ -1361,13 +1392,25 @@ function impossibleMarketLine(row) {
   }
   return false;
 }
+function isMultiPlayerProp(row) {
+  // Onyx "A + B" totals and "A :: B" matchups — not single-player props.
+  if (!row || row.kind !== "prop") return false;
+  const text = `${row.player || ""} ${row.selection || ""}`;
+  if (text.includes("::")) return true;
+  if (/[A-Za-z]\s\+\s[A-Za-z]/.test(text)) return true;
+  if (/\s+vs\.?\s+/i.test(text)) return true;
+  const code = String(row.market_code || "").toLowerCase();
+  return /player_matchup|matchup_prop|player_race|two_player|multi_player|player_vs_player/.test(code);
+}
 function baseVisibleIgnoringPeriod(row) {
   const day = String(row.start || "").slice(0, 10);
   if (day && day < todayISO()) return false;
   if (tipoffPassed(row.start)) return false;
   if (state.league !== "all" && rowLeague(row) !== state.league) return false;
   if (isFootballLateQuarter(row)) return false;
+  if (isFootball1HProp(row)) return false;
   if (isDriveMarket(row)) return false;
+  if (isMultiPlayerProp(row)) return false;
   if (impossibleMarketLine(row)) return false;
   if (!hasProjection(row)) return false;
   if (row.kind === "other" && row.source !== "onyx" && row.source !== "fliff" && row.provider !== "4c") return false;
@@ -1460,7 +1503,9 @@ function propStatFamily(row) {
   if (/points?\s+and\s+rebounds?|points?\s*\+\s*rebounds?|pts?\s*rebs?/.test(text) && !/assist/.test(text)) return "points_rebounds";
   if (/points?\s+and\s+assists?|points?\s*\+\s*assists?|pts?\s*asts?/.test(text) && !/rebound/.test(text)) return "points_assists";
   if (/rebounds?\s+and\s+assists?|assists?\s+rebounds?|rebs?\s*asts?/.test(text) && !/point/.test(text)) return "rebounds_assists";
-  const stripped = code.replace(/^player_/, "").replace(/^1q_/, "").replace(/^1st_quarter_/, "");
+  const stripped = code
+    .replace(/^player_/, "")
+    .replace(/^(?:1q_|2q_|3q_|4q_|q1_|q2_|q3_|q4_|1h_|2h_|h1_|h2_|1st_quarter_|1st_half_|2nd_half_)/, "");
   if (PROP_STAT_LABELS[stripped]) return stripped;
   return stripped || market.replace(/\s+/g, "_") || "prop";
 }
@@ -1495,14 +1540,14 @@ function periodMarketKey(row) {
   const kind = String((row && row.kind) || "");
   const market = String((row && row.market) || "").toLowerCase();
   const code = String((row && row.market_code) || "").toLowerCase();
-  const text = `${market} ${code}`;
+  const text = `${market} ${code}`.replace(/_/g, " ");
   let period = "fg";
-  if (/\b1st_quarter\b|1st quarter|first quarter|\bq1\b|\b1q\b/.test(text)) period = "q1";
-  else if (/\b2nd_quarter\b|2nd quarter|second quarter|\bq2\b|\b2q\b/.test(text)) period = "q2";
-  else if (/\b3rd_quarter\b|3rd quarter|third quarter|\bq3\b|\b3q\b/.test(text)) period = "q3";
-  else if (/\b4th_quarter\b|4th quarter|fourth quarter|\bq4\b|\b4q\b/.test(text)) period = "q4";
-  else if (/\b1st_half\b|1st half|first half|\bh1\b|\b1h\b/.test(text)) period = "h1";
-  else if (/\b2nd_half\b|2nd half|second half|\bh2\b|\b2h\b/.test(text)) period = "h2";
+  if (/\b1st quarter\b|first quarter|\bq1\b|\b1q\b/.test(text)) period = "q1";
+  else if (/\b2nd quarter\b|second quarter|\bq2\b|\b2q\b/.test(text)) period = "q2";
+  else if (/\b3rd quarter\b|third quarter|\bq3\b|\b3q\b/.test(text)) period = "q3";
+  else if (/\b4th quarter\b|fourth quarter|\bq4\b|\b4q\b/.test(text)) period = "q4";
+  else if (/\b1st half\b|first half|\bh1\b|\b1h\b/.test(text)) period = "h1";
+  else if (/\b2nd half\b|second half|\bh2\b|\b2h\b/.test(text)) period = "h2";
   else if (text.includes("quarter")) period = "q";
   if (kind === "prop") {
     const family = propStatFamily(row);
@@ -1582,25 +1627,46 @@ function isAltLine(row) {
   return false;
 }
 function isDerivativeMarket(row) {
+  // Derivatives = period game markets (1Q/1H spread/ML/total) + team totals.
+  // Full-game alt spread/total ladders are NOT derivatives.
   if (!row) return false;
+  if (String(row.kind || "") === "prop") return false;
   const period = propPeriod(row);
   if (period && period !== "fg" && period !== "full" && period !== "game") return true;
   const text = `${row.market_code || ""} ${row.market || ""}`.toLowerCase();
-  if (/1st_half|2nd_half|1st_quarter|2nd_quarter|3rd_quarter|4th_quarter|team_total|team total|\b1h\b|\b2h\b|\b1q\b/.test(text)) {
+  if (/1st_half|2nd_half|1st_quarter|2nd_quarter|3rd_quarter|4th_quarter|team_total|team total|\b1h\b|\b2h\b|\b1q\b|\b2q\b|\b3q\b|\b4q\b/.test(text)) {
     return true;
   }
   return false;
+}
+function derivativeKindLabel(row, alt) {
+  const period = propPeriod(row);
+  const kind = String((row && row.kind) || "");
+  const market = String((row && row.market) || "").toLowerCase();
+  const code = String((row && row.market_code) || "").toLowerCase();
+  const isTeam = /team/.test(market) || /team_total/.test(code);
+  let base = "Market";
+  if (kind === "ml") base = "Moneyline";
+  else if (kind === "spread") base = "Spread";
+  else if (kind === "total") base = isTeam ? "Team Total" : "Total";
+  else if (isTeam) base = "Team Total";
+  let prefix = "";
+  if (period === "q1") prefix = "1Q ";
+  else if (period === "q2") prefix = "2Q ";
+  else if (period === "q3") prefix = "3Q ";
+  else if (period === "q4") prefix = "4Q ";
+  else if (period === "h1") prefix = "1H ";
+  else if (period === "h2") prefix = "2H ";
+  const name = `${prefix}${base}`.trim();
+  return alt ? `Alt ${name}` : name;
 }
 function marketKindLabel(row) {
   if (!row) return "";
   const alt = isAltLine(row);
   const kind = String(row.kind || "");
-  const market = String(row.market || "");
   if (kind === "prop") return alt ? "Alt Player Prop" : "Player Prop";
-  if (isDerivativeMarket(row)) {
-    if (/team/.test(market.toLowerCase()) && kind === "total") return alt ? "Alt Team Total" : "Team Total";
-    return alt ? "Alt Derivative" : "Derivative";
-  }
+  // Period / team-total derivatives — never label these "Alt Spread".
+  if (isDerivativeMarket(row)) return derivativeKindLabel(row, alt);
   if (kind === "spread") return alt ? "Alt Spread" : "Main Spread";
   if (kind === "total") return alt ? "Alt Total" : "Main Total";
   if (kind === "ml") return alt ? "Alt Moneyline" : "Main Moneyline";
@@ -1672,21 +1738,23 @@ function betKey(row) {
   const line = row.line == null ? "" : (row.kind === "spread" ? Math.abs(Number(row.line)).toFixed(1) : Number(row.line).toFixed(1));
   const side = sideOf(row);
   const team = teamName(row).toLowerCase();
+  const period = propPeriod(row);
   // One row per side so over markets only carry over books (and under only
   // under). Spreads key on home/away seat so "UConn" / "Connecticut" collapse.
   // Canonical family+period so "Anytime Td" / "Anytime Touchdowns" / codes collapse
   // to one best-book row; other books on the same side stay in the expand panel.
+  // Period is required so FG alt spreads never merge with 1H/1Q derivatives.
   if (row.kind === "prop") {
-    return ["prop", gid, String(row.player || "").toLowerCase(), propPeriod(row), propStatFamily(row), line, side].join("|");
+    return ["prop", gid, String(row.player || "").toLowerCase(), period, propStatFamily(row), line, side].join("|");
   }
   if (row.kind === "total") {
-    const teamTot = String(row.market || "").toLowerCase().includes("team");
+    const teamTot = /team/i.test(String(row.market || "")) || /team_total/i.test(String(row.market_code || ""));
     const seat = teamTot ? (spreadSeat(row) || team) : "";
-    return ["total", gid, row.market, line, side || "?", seat].join("|");
+    return ["total", gid, period, teamTot ? "team_total" : "total", line, side || "?", seat].join("|");
   }
-  if (row.kind === "spread") return ["spread", gid, row.market, line, spreadSeat(row) || team].join("|");
-  if (row.kind === "ml") return ["ml", gid, row.market, spreadSeat(Object.assign({}, row, { line: null })) || String(row.selection || "").toLowerCase()].join("|");
-  return ["other", gid, row.market, row.selection, line, side].join("|");
+  if (row.kind === "spread") return ["spread", gid, period, line, spreadSeat(row) || team].join("|");
+  if (row.kind === "ml") return ["ml", gid, period, spreadSeat(Object.assign({}, row, { line: null })) || String(row.selection || "").toLowerCase()].join("|");
+  return ["other", gid, period, row.market, row.selection, line, side].join("|");
 }
 
 function chips(id, items, key) {
@@ -1762,6 +1830,14 @@ function isFootballLateQuarter(row) {
   if (/\b2nd quarter\b|\b3rd quarter\b|\b4th quarter\b/.test(text)) return true;
   if (/(^|[_\s])(2q|3q|4q|q2|q3|q4)($|[_\s])/.test(text)) return true;
   return false;
+}
+
+function isFootball1HProp(row) {
+  // NFL/CFB: hide 1H player props; keep FG/1Q props and 1H game markets.
+  const league = rowLeague(row);
+  if (league !== "cfb" && league !== "nfl") return false;
+  if (!row || row.kind !== "prop") return false;
+  return propPeriod(row) === "h1";
 }
 
 function isDriveMarket(row) {
@@ -2316,6 +2392,7 @@ function formCacheKey(bet) {
     rowLeague(pick),
     String(pick.player || "").toLowerCase(),
     propStatFamily(pick),
+    propPeriod(pick),
     String(pick.athlete_id || ""),
   ].join("|");
 }
@@ -2817,14 +2894,12 @@ function flatBet(bet) {
     labsProbVal = null;
     labsPrice = null;
   } else if (showBettor && gameMarket) {
-    // Prefer Labs game tip when attached; else nfelo/Sasser/Miya board numbers.
-    const labsTeamMean = spread
-      ? spreadTeamMean(quote, quote.labs_mean != null ? quote.labs_mean : quote.sharp_mean)
-      : quote.labs_mean;
-    if (quote.labs_mean != null || labsTeamMean != null) {
+    // Labs mean only — never treat sharp/sim margin as Labs (that minted -9900
+    // chalk by re-pricing through fairProbAtLine and ignoring sharp_odds).
+    if (quote.labs_mean != null) {
+      const labsTeamMean = spread ? spreadTeamMean(quote, quote.labs_mean) : quote.labs_mean;
       labsProj = quote.kind === "ml" ? null : (spread ? labsTeamMean : quote.labs_mean);
       if (quote.kind === "spread" && labsProj != null) labsProj = spreadProjLine(labsProj);
-      // Price the posted line (main or alt) from the seat-oriented Labs tip mean.
       labsProbVal = quote.labs_prob != null
         ? quote.labs_prob
         : fairProbAtLine(spread ? labsTeamMean : quote.labs_mean, postedLine, sideOf(quote) || side, spread);
@@ -2832,8 +2907,10 @@ function flatBet(bet) {
         ? quote.labs_odds
         : (labsProbVal != null ? americanFromProb(labsProbVal) : null);
     } else {
+      // nfelo / Sasser / Miya board tip — prefer stamped odds over a reprice.
       const sharpMean = quote.sharp_mean != null ? quote.sharp_mean : quote.miya_mean;
-      const sharpTeamMean = spread ? spreadTeamMean(quote, sharpMean) : sharpMean;
+      // sharp_mean is already seat-oriented on CFB/NFL boards; don't flip via sim.
+      const sharpTeamMean = Number.isFinite(Number(sharpMean)) ? Number(sharpMean) : null;
       if (quote.kind === "spread" || quote.kind === "total") {
         labsProj = sharpTeamMean != null ? sharpTeamMean : null;
         if (quote.kind === "spread" && labsProj != null) labsProj = spreadProjLine(labsProj);
@@ -2920,11 +2997,13 @@ function flatBet(bet) {
     const dec = decimalOdds(bookPrice);
     if (dec != null) edgeMkt = Number(fairProb) * dec - 1;
   }
-  const qk = (modelProb != null && bookPrice != null) ? quarterKelly(modelProb, bookPrice) : null;
+  const stakeInfo = stakeFromRow(quote, modelProb, bookPrice);
+  const qk = stakeInfo.skip ? 0 : stakeInfo.stake;
   // My price = model American for this posted market (sim odds preferred when present).
   const myPrice = modelPrice != null ? modelPrice : (simPrice != null ? simPrice : null);
   const myProb = modelProb != null ? modelProb : (simProb != null ? simProb : null);
   const lineDisplay = lineCellTxt(quote, side, lineTxtVal);
+  const qkTitle = stakeInfo.note || "";
   return {
     bet,
     clear: Boolean(quote.clear || (bet.quotes || []).some((row) => row.clear)),
@@ -2968,7 +3047,11 @@ function flatBet(bet) {
     edgeMkt,
     edgeMktTxt: pct(edgeMkt),
     qk,
-    qkTxt: qk == null ? "" : (qk < 1 ? "<$1" : "$" + Math.round(qk)),
+    qkSkip: Boolean(stakeInfo.skip),
+    qkTitle,
+    qkTxt: stakeInfo.skip
+      ? "—"
+      : (qk == null ? "" : (qk < 1 ? "<$1" : "$" + Math.round(qk))),
     start: quote.start || "",
     kind: quote.kind || "",
   };
@@ -3245,7 +3328,7 @@ function tableFor(list) {
         <td>${row.oddsTxt}</td>
         <td class="${roiClass}">${row.roiTxt}</td>
         <td class="${edgeMktClass}">${row.edgeMktTxt}</td>
-        <td>${row.qkTxt}</td>
+        <td${row.qkTitle ? ` title="${String(row.qkTitle).replace(/"/g, "&quot;")}"` : ""}${row.qkSkip ? ` class="muted"` : ""}>${row.qkTxt}</td>
       </tr>${open ? bookPanel(row.bet) : ""}`;
     }).join("")}
   </tbody></table></div>`;
@@ -3933,6 +4016,7 @@ async function loadPropForm(openKey) {
     player: pick.player || "",
     market: propStatFamily(pick) || pick.market || "",
     athlete_id: pick.athlete_id || "",
+    period: propPeriod(pick) || "fg",
     n: "10",
   });
   try {
@@ -4053,22 +4137,12 @@ async function load() {
     .then((r) => (r.ok ? r.json() : {}))
     .catch(() => ({}));
   try {
-    // Game markets first (small). Props are a separate fetch — NFL props alone
-    // were ~14MB and froze JSON.parse on the main thread.
-    let needProps = state.market === "prop";
+    // CBB/NBA are prop-first; NFL/CFB game lines are small enough to load with
+    // props. Skipping props left CBB looking empty (game markets often absent).
+    const needProps = true;
     const [colors, body] = await Promise.all([colorsP, fetchEdges(league, { withProps: needProps })]);
     TEAM_COLORS = colors || {};
     state.book = trimBoardBooks(body);
-    // NBA (and some slates) only post props / exotic MLs — if the active
-    // market has nothing after the light load, pull props immediately.
-    if (!needProps && state.book && state.book.props_pending) {
-      const hasKind = (state.book.rows || []).some((row) => row.kind === state.market);
-      if (!hasKind) {
-        $("table").innerHTML = `<div class="empty">Loading props…</div>`;
-        state.book = trimBoardBooks(await fetchEdges(league, { withProps: true }));
-        needProps = true;
-      }
-    }
   } catch (err) {
     TEAM_COLORS = await colorsP;
     $("status").textContent = "Board failed to load. Pull to refresh.";
