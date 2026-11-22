@@ -640,11 +640,14 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const CBB_STATIC = true;
-const CBB_ASSET_V = "20261121033017";
+const CBB_ASSET_V = "20261122122741";
 const CBB_ASSET_V = "";
 const state = {
   book: null, view: "edges", game: "", league: "cbb", market: "spread", marketName: "all",
-  period: "all", side: "all", line: "main", sportsbook: "all", player: "", q: "", clearOnly: false, openKey: "",
+  period: "all", side: "all", line: "main", sportsbook: "all", player: "", q: "",
+  // posted | clear | agree — Agree = Bettor Odds + My proj same side of the line
+  boardView: "posted",
+  clearOnly: false, openKey: "",
   sortKey: "roi", sortDir: "desc",
   slip: [], slipQuote: null,
 };
@@ -681,6 +684,7 @@ const LINE_CHIPS = [
 const VIEW_CHIPS = [
   ["posted", "All posted"],
   ["clear", "Clear edges"],
+  ["agree", "Agree"],
 ];
 // Shown prices: Sim on modeled markets; Bettor Odds on main props + full-game ML/spread/total.
 // No-vig fair is Pinnacle de-vig when posted; otherwise market de-vig across books.
@@ -708,9 +712,52 @@ const BOOK_LOCAL = Object.fromEntries(
 let _mainLineCache = null;
 let _peerIndex = null;
 let _peerIndexRows = null;
+function isKickingProp(row) {
+  if (!row) return false;
+  const kind = String(row.kind || "").toLowerCase();
+  const code = String(row.market_code || "").toLowerCase();
+  const hasPlayer = String(row.player || "").trim() || code.startsWith("player");
+  if (kind && kind !== "prop" && !hasPlayer) return false;
+  const text = `${code} ${row.market || ""} ${row.selection || ""}`
+    .toLowerCase()
+    .replace(/[+\-_]+/g, " ");
+  if (/three[_\s]?point|3[_\s]?pt|\b3pm\b|fg3/.test(text)) return false;
+  return /kicking[_\s]?points?|\bkicker\b|extra[_\s]?points?|xp[_\s]?made|made[_\s]?xp|pat[_\s]?made|field[_\s]?goals?|fg[_\s]?made|made[_\s]?fg|longest[_\s]?field[_\s]?goal/.test(text);
+}
+function isCulledFootballProp(row) {
+  if (!row) return false;
+  const kind = String(row.kind || "").toLowerCase();
+  const code = String(row.market_code || "").toLowerCase();
+  const hasPlayer = String(row.player || "").trim() || code.startsWith("player");
+  if (kind && kind !== "prop" && !hasPlayer) return false;
+  const league = String(row.league || "").toLowerCase();
+  const text = `${code} ${row.market || ""} ${row.selection || ""}`
+    .toLowerCase()
+    .replace(/[+\-_]+/g, " ");
+  // Anytime TD / to-score (all football).
+  if (/anytime[_\s]?(td|tds|touchdown)|anytime[_\s]?touchdown[_\s]?scorer|\bto[_\s]?score\b|touchdown[_\s]?scorer|player[_\s]?anytime|player[_\s]?touchdowns\b/.test(text)) {
+    if (/pass\w*[_\s]?td|rush\w*[_\s]?td|rec\w*[_\s]?td|receiv\w*[_\s]?td/.test(text) && !/anytime|scorer/.test(text)) {
+      /* keep passing/rushing/receiving TD ladders */
+    } else {
+      return true;
+    }
+  }
+  // Tackles + defensive assists — football only (NBA AST stays).
+  if (league === "nfl" || league === "cfb") {
+    if (/tackles?|solo[_\s]?tackles?|tackles?[_\s]?assists?|assisted[_\s]?tackles?/.test(text)) return true;
+    if (/\bassists?\b|\basts?\b/.test(text) && !/point|rebound|pra|pass|rush|receiv|yard|reception/.test(text)) {
+      return true;
+    }
+  }
+  return false;
+}
 function trimBoardBooks(body) {
   if (!body || !Array.isArray(body.rows)) return body;
-  body.rows = body.rows.filter((row) => SELECTED_BOOK_SET.has(String(row.source || "")));
+  body.rows = body.rows.filter((row) => (
+    SELECTED_BOOK_SET.has(String(row.source || ""))
+    && !isKickingProp(row)
+    && !isCulledFootballProp(row)
+  ));
   _mainLineCache = null;
   _peerIndex = null;
   _peerIndexRows = null;
@@ -1428,6 +1475,14 @@ function propStatFamily(row) {
   if (/\blast td\b|last touchdown|last_td/.test(text)) return "last_td";
   if (/pass.?rush.?rec|pass rush rec/.test(text)) return "pass_rush_rec_tds";
   if (/rush.?rec.?td|rush rec td/.test(text)) return "rush_rec_td";
+  // Combos before component yards — "pass rush yards" must not become rush yards.
+  if (/pass.+rush.+yard|passing.+rushing.+yard|pass_rush_yard|passing_rushing_yard/.test(text)
+      && !/rec/.test(text)) {
+    return "passing_rushing_yards";
+  }
+  if (/rush.+rec.+yard|rushing.+receiving.+yard|rush_rec_yard/.test(text)) {
+    return "rush_rec_yards";
+  }
   if (/passing touchdown|pass tds?\b|pass_td|player_pass_tds|player_passing_touchdowns/.test(text)) {
     return "passing_touchdowns";
   }
@@ -1462,6 +1517,8 @@ function propStatFamily(row) {
     player_receptions: "receptions",
     player_rush_rec_yards: "rush_rec_yards",
     player_passing_rushing_yards: "passing_rushing_yards",
+    player_pass_rush_yards: "passing_rushing_yards",
+    player_pass_rush_yds: "passing_rushing_yards",
     player_longest_rush: "longest_rush",
     player_longest_reception: "longest_reception",
     player_longest_completion: "longest_completion",
@@ -1973,10 +2030,51 @@ function matchingRows(scoped) {
   });
 }
 
+function myProjMean(row) {
+  if (!row) return null;
+  if (row.sim_mean != null && Number.isFinite(Number(row.sim_mean))) return Number(row.sim_mean);
+  if (row.model_mean != null && Number.isFinite(Number(row.model_mean))) return Number(row.model_mean);
+  return null;
+}
+function bettorOddsMean(row) {
+  if (!row) return null;
+  if (row.labs_mean != null && Number.isFinite(Number(row.labs_mean))) return Number(row.labs_mean);
+  // Full-game board tip when Labs is blank (nfelo / Sasser / Miya).
+  if (row.kind === "ml" || row.kind === "spread" || row.kind === "total") {
+    if (row.sharp_mean != null && Number.isFinite(Number(row.sharp_mean))) return Number(row.sharp_mean);
+  }
+  return null;
+}
+function labsAgreeOnPrice(row) {
+  /** Bettor Odds + My proj agree on the posted price (same side of the line). */
+  if (!row) return false;
+  if (row.labs_agree === true || row.labs_agree === 1 || row.labs_agree === "true" || row.labs_agree === "True") {
+    return bettorOddsMean(row) != null && myProjMean(row) != null;
+  }
+  const labs = bettorOddsMean(row);
+  const mine = myProjMean(row);
+  const line = row.line != null ? Number(row.line) : null;
+  if (labs == null || mine == null || !Number.isFinite(line)) return false;
+  if (row.kind === "spread") {
+    return (mine + line) > 0 && (labs + line) > 0;
+  }
+  const side = String(sideOf(row) || "").toLowerCase();
+  if (side === "under") return mine < line && labs < line;
+  if (side === "over") return mine > line && labs > line;
+  return (mine - line) * (labs - line) > 0;
+}
 function lightDecorate(bet) {
   // Cheap pick/ev only — full decorate() runs later for the visible table rows.
   const quotes = (bet.quotes || []).filter((row) => row.book != null && sanePrice(row.book, row.source, row));
-  const pick = quotes.find((row) => row.clear && row.ev != null) || quotes.find((row) => row.ev != null) || quotes[0];
+  let pick = null;
+  if (state.boardView === "agree") {
+    pick = quotes.find((row) => labsAgreeOnPrice(row) && row.clear && row.ev != null)
+      || quotes.find((row) => labsAgreeOnPrice(row) && row.ev != null)
+      || quotes.find((row) => labsAgreeOnPrice(row));
+  }
+  if (!pick) {
+    pick = quotes.find((row) => row.clear && row.ev != null) || quotes.find((row) => row.ev != null) || quotes[0];
+  }
   return {
     key: bet.key,
     quotes,
@@ -1994,7 +2092,15 @@ function groupedBets(rows) {
     groups.set(key, item);
   });
   return [...groups.values()]
-    .filter((bet) => !state.clearOnly || bet.quotes.some((row) => row.clear))
+    .filter((bet) => {
+      if (state.boardView === "clear" || state.clearOnly) {
+        return bet.quotes.some((row) => row.clear);
+      }
+      if (state.boardView === "agree") {
+        return bet.quotes.some((row) => labsAgreeOnPrice(row));
+      }
+      return true;
+    })
     .map(lightDecorate)
     .filter((bet) => (bet.quotes || []).length > 0 && bet.pick && bet.pick.book != null)
     .sort((a, b) => {
@@ -2087,17 +2193,23 @@ function renderGames() {
   // Count unique bets without decorate() — grouping+decorate on 16k NFL
   // rows was multi-second on every chip click / soft reload.
   const matched = matchingRows(false);
-  const clearKeys = state.clearOnly ? new Set() : null;
-  if (clearKeys) {
+  const viewKeys = (state.boardView === "clear" || state.clearOnly || state.boardView === "agree")
+    ? new Set()
+    : null;
+  if (viewKeys) {
     matched.forEach((row) => {
-      if (row.clear) clearKeys.add(betKey(row));
+      if (state.boardView === "agree") {
+        if (labsAgreeOnPrice(row)) viewKeys.add(betKey(row));
+      } else if (row.clear) {
+        viewKeys.add(betKey(row));
+      }
     });
   }
   const seenBets = new Set();
   matched.forEach((row) => {
     const key = betKey(row);
     if (seenBets.has(key)) return;
-    if (clearKeys && !clearKeys.has(key)) return;
+    if (viewKeys && !viewKeys.has(key)) return;
     seenBets.add(key);
     rowRailKeys(row).forEach((id) => {
       counts[id] = (counts[id] || 0) + 1;
@@ -2142,8 +2254,11 @@ function renderGames() {
     // unpriced / other-market games). Book-only stubs still need a price.
     return hasViewPrices || hasAnyPrice || modeled || state.game === id;
   });
+  const viewSub = state.boardView === "clear" || state.clearOnly
+    ? "Fair edge · 20%+"
+    : (state.boardView === "agree" ? "Bettor Odds = My proj" : "Posted markets");
   $("games").innerHTML = `<button class="game${state.game === "" ? " active" : ""}" data-game="">
-      <span></span><div><b>All games</b><small>${state.clearOnly ? "Fair edge · 20%+" : "Posted markets"}</small></div><span></span><span></span>
+      <span></span><div><b>All games</b><small>${viewSub}</small></div><span></span><span></span>
       <span class="count">${total}</span>
     </button>` + shown.map((g) => {
     const id = g.id || g.game;
@@ -2621,7 +2736,7 @@ function caption(bet) {
 function fairSource(bet) {
   const src = bet.pick && bet.pick.price_src;
   if (src === "labs") return "Bettor Odds prices";
-  if (src === "evanmiya" || src === "sasser" || src === "nfelo") return "Board prices";
+  if (src === "evanmiya" || src === "sasser" || src === "nfelo" || src === "arkndjl") return "Board prices";
   return "Fair price";
 }
 
@@ -3363,19 +3478,49 @@ function isFootballBox(league) {
 function boxStat(player, key) {
   if (key === "mpg") return player.mpg;
   const row = player.stats && player.stats[key];
-  if (row != null && row.mean != null && Number.isFinite(Number(row.mean))) {
-    return Number(row.mean);
-  }
+  let value = (row != null && row.mean != null && Number.isFinite(Number(row.mean)))
+    ? Number(row.mean)
+    : null;
   // PTS must never blank out when PRA / REB / AST are present (board fallback gaps).
-  if (key === "points" && player && player.stats) {
+  if (value == null && key === "points" && player && player.stats) {
     const pra = player.stats.pra && Number(player.stats.pra.mean);
     const reb = player.stats.rebounds && Number(player.stats.rebounds.mean);
     const ast = player.stats.assists && Number(player.stats.assists.mean);
     if (Number.isFinite(pra) && Number.isFinite(reb) && Number.isFinite(ast)) {
-      return Math.max(0, pra - reb - ast);
+      value = Math.max(0, pra - reb - ast);
     }
   }
-  return null;
+  // Football: never show yards without the matching touch count (or vice versa).
+  if (player && player.stats) {
+    const pa = player.stats.pass_attempts && Number(player.stats.pass_attempts.mean);
+    const pyds = player.stats.passing_yards && Number(player.stats.passing_yards.mean);
+    const isPasser = (Number.isFinite(pa) && pa >= 8) || (Number.isFinite(pyds) && pyds >= 80);
+    const recYds = player.stats.receiving_yards && Number(player.stats.receiving_yards.mean);
+    const rec = player.stats.receptions && Number(player.stats.receptions.mean);
+    const rushYds = player.stats.rushing_yards && Number(player.stats.rushing_yards.mean);
+    const rushAtt = (player.stats.rush_attempts && Number(player.stats.rush_attempts.mean))
+      || (player.stats.carries && Number(player.stats.carries.mean));
+    // Never invent catch volume for the QB.
+    if (isPasser && (key === "receptions" || key === "receiving_yards" || key === "receiving_touchdowns")) {
+      return 0;
+    }
+    if (!isPasser && key === "receptions" && Number.isFinite(recYds) && recYds >= 1 && !(Number.isFinite(value) && value >= 0.25)) {
+      return Math.max(0.3, recYds / 11);
+    }
+    if (!isPasser && key === "receiving_yards" && Number.isFinite(rec) && rec >= 0.25 && !(Number.isFinite(value) && value >= 0.5)) {
+      return rec * 11;
+    }
+    if ((key === "rush_attempts" || key === "carries")
+      && Number.isFinite(rushYds) && rushYds >= 1
+      && !(Number.isFinite(value) && value >= 0.25)) {
+      return Math.max(0.3, rushYds / 4.2);
+    }
+    if (key === "rushing_yards" && Number.isFinite(rushAtt) && rushAtt >= 0.25
+      && !(Number.isFinite(value) && value >= 0.5)) {
+      return rushAtt * 4.2;
+    }
+  }
+  return value;
 }
 function boxNum(value, digits = 1) {
   const n = Number(value);
@@ -3521,7 +3666,18 @@ function boxFootballColumn(name, logoSrc, players, accent, injuredKeys, league) 
     })
     .sort((a, b) => (Number(boxStat(b, "rushing_yards")) || 0) - (Number(boxStat(a, "rushing_yards")) || 0));
   const receiving = players
-    .filter((p) => Number(boxStat(p, "receptions")) >= 1.0 || Number(boxStat(p, "receiving_yards")) >= 8)
+    .filter((p) => {
+      const key = String(p.player || p.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+      // Never list the QB (passer) as a receiver — even if bad means leaked in.
+      if (key && (key === starterPassKey || backupPassKeys.has(key))) return false;
+      const pa = Number(boxStat(p, "pass_attempts"));
+      const pyds = Number(boxStat(p, "passing_yards"));
+      if (pa >= 8 || pyds >= 80) return false;
+      const rec = Number(boxStat(p, "receptions"));
+      const yds = Number(boxStat(p, "receiving_yards"));
+      // Require a real catch projection — yards alone with 0 REC is noise.
+      return (Number.isFinite(rec) && rec >= 0.35) || (Number.isFinite(yds) && yds >= 8 && Number.isFinite(rec) && rec > 0);
+    })
     .sort((a, b) => (Number(boxStat(b, "receiving_yards")) || 0) - (Number(boxStat(a, "receiving_yards")) || 0));
 
   // Short labels unique within this team column (St. Brown ≠ A.J. Brown → both "A. Brown").
@@ -3611,9 +3767,13 @@ function boxColumn(name, logoSrc, players, accent, league, injuredKeys) {
     }).join("")}
   </tr>`;
   }).join("");
+  const nWithMpg = rows.filter((p) => Number(p.mpg) >= 1).length;
+  const est = nWithMpg >= 8
+    ? "Projected box · this game"
+    : "Projected box · rotation prior";
   return `<section class="box-col">
     <h3>${logo(logoSrc, name, league)}${escapeHtml(name)}</h3>
-    <p class="est">Projected box · this game</p>
+    <p class="est">${est}</p>
     <table class="box-table">
       <thead><tr><th class="left">Player</th>${cols.map(([, label]) => `<th>${label}</th>`).join("")}</tr></thead>
       <tbody>${body || `<tr><td class="left">No projected rotation</td></tr>`}</tbody>
@@ -3638,6 +3798,20 @@ function boxSidePoints(players) {
     const pts = Number(boxStat(player, "points"));
     return sum + (Number.isFinite(pts) ? pts : 0);
   }, 0);
+}
+function boxRotationComplete(players) {
+  /** Full rotation ≈ 5+ players with real minutes per side (not book-prop stubs). */
+  const rows = players || [];
+  let withMpg = 0;
+  let mpgSum = 0;
+  rows.forEach((p) => {
+    const m = Number(p && p.mpg);
+    if (Number.isFinite(m) && m >= 1) {
+      withMpg += 1;
+      mpgSum += m;
+    }
+  });
+  return withMpg >= 5 && mpgSum >= 80;
 }
 function boxSeatFor(player, awayName, homeName) {
   const raw = String((player && player.side) || "").toLowerCase();
@@ -3676,8 +3850,17 @@ function boxHtml(payload, desk) {
   const home = seated.filter((player) => player.side === "home");
   const awayBox = boxSidePoints(away);
   const homeBox = boxSidePoints(home);
-  const awayScore = awayBox > 0.5 ? awayBox : (desk && desk.sim_away != null ? desk.sim_away : game.sim_away_pts);
-  const homeScore = homeBox > 0.5 ? homeBox : (desk && desk.sim_home != null ? desk.sim_home : game.sim_home_pts);
+  // Prefer desk/Miya team tip unless both sides look like a full *sim* rotation.
+  // Thin sportsbook-prop stubs (3–4 players) used to overwrite 70+ team scores.
+  // Fallback rotation boxes are already scaled to the tip — keep the tip on the banner.
+  const fullAway = boxRotationComplete(away);
+  const fullHome = boxRotationComplete(home);
+  const tipAway = desk && desk.sim_away != null ? desk.sim_away : game.sim_away_pts;
+  const tipHome = desk && desk.sim_home != null ? desk.sim_home : game.sim_home_pts;
+  const useTip = String(game.box_source || "") === "fallback_rotation"
+    || !(fullAway && fullHome);
+  const awayScore = (!useTip && awayBox > 0.5) ? awayBox : (tipAway != null ? tipAway : awayBox);
+  const homeScore = (!useTip && homeBox > 0.5) ? homeBox : (tipHome != null ? tipHome : homeBox);
   const spread = boxSpread(homeName, awayName, game.fair_home_spread);
   const total = boxNum(game.fair_total);
   const poss = boxNum(game.exp_possessions);
@@ -3740,11 +3923,13 @@ function boxPayloadFromBoard(id, desk) {
     const key = `${String(row.player).toLowerCase()}|${side}`;
     let player = byPlayer.get(key);
     if (!player) {
+      const mpg0 = row.proj_mpg != null ? Number(row.proj_mpg)
+        : (row.xmin != null ? Number(row.xmin) : null);
       player = {
         player: row.player,
         team: teamName || teamTok || "",
         side,
-        mpg: row.proj_mpg != null ? row.proj_mpg : null,
+        mpg: Number.isFinite(mpg0) ? mpg0 : null,
         stats: {},
       };
       byPlayer.set(key, player);
@@ -3754,7 +3939,9 @@ function boxPayloadFromBoard(id, desk) {
     const mean = row.sim_mean != null ? row.sim_mean : row.model_mean;
     if (mean == null || !Number.isFinite(Number(mean))) continue;
     if (!player.stats[family]) player.stats[family] = { mean: Number(mean) };
-    if (row.proj_mpg != null && player.mpg == null) player.mpg = row.proj_mpg;
+    const mpg = row.proj_mpg != null ? Number(row.proj_mpg)
+      : (row.xmin != null ? Number(row.xmin) : null);
+    if (Number.isFinite(mpg) && mpg > 0 && !(Number(player.mpg) > 0)) player.mpg = mpg;
   }
   const players = Array.from(byPlayer.values());
   if (!players.length && !(desk && (desk.sim_away != null || desk.sim_home != null))) return null;
@@ -3813,11 +4000,16 @@ function render() {
   chips("sides", SIDE_CHIPS, "side");
   chips("lines", LINE_CHIPS, "line");
   chips("books", bookChipItems(), "sportsbook");
+  const activeView = state.boardView || (state.clearOnly ? "clear" : "posted");
   $("views").innerHTML = VIEW_CHIPS.map(([value, label]) =>
-    `<button class="chip${(state.clearOnly ? "clear" : "posted") === value ? " active" : ""}" data-clear="${value}">${label}</button>`
+    `<button class="chip${activeView === value ? " active" : ""}" data-view="${value}" title="${
+      value === "agree" ? "Bettor Odds and My projection agree on the posted line"
+        : (value === "clear" ? "Fair EV ≥ 20% with Labs agree" : "Every priced side")
+    }">${label}</button>`
   ).join("");
   $("views").querySelectorAll(".chip").forEach((btn) => btn.onclick = () => {
-    state.clearOnly = btn.dataset.clear === "clear";
+    state.boardView = btn.dataset.view || "posted";
+    state.clearOnly = state.boardView === "clear";
     render();
   });
   const list = bets();
