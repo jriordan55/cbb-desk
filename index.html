@@ -272,6 +272,76 @@
   }
   .book-quote b { font-variant-numeric: tabular-nums; min-width: 42px; text-align: right; }
   .book-quote span { color: var(--muted); }
+  /* Books-only shopping strip — one compact line, best price highlighted. */
+  .board tr.books-only td { background: #fafbfc; }
+  .board tr.books-only:hover td { background: #f3f6f9; }
+  .board tr.book-row.shop-row td {
+    background: #fafbfc;
+    padding: 0 8px 10px;
+    border-bottom: 1px solid #e8ecf1;
+  }
+  .shop-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 6px;
+    padding: 2px 0 0;
+  }
+  .shop-chip {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 64px;
+    padding: 6px 8px 5px;
+    background: #fff;
+    border: 1px solid #e2e7ee;
+    border-radius: 6px;
+  }
+  .shop-chip .shop-logo {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+  }
+  .shop-chip .shop-name {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+    line-height: 1;
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .shop-chip .shop-line {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--navy);
+    line-height: 1;
+  }
+  .shop-chip b {
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    line-height: 1;
+  }
+  .shop-chip.best {
+    border-color: #1f6b3a;
+    background: #f3faf5;
+  }
+  .shop-chip.best b { color: #1f6b3a; }
+  .shop-chip.alt-line {
+    border-style: dashed;
+    opacity: 0.92;
+  }
+  .shop-empty {
+    color: var(--muted);
+    font-size: 11px;
+    padding: 4px 0;
+  }
   .form-panel {
     display: grid;
     gap: 10px;
@@ -640,7 +710,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const CBB_STATIC = true;
-const CBB_ASSET_V = "20261122122741";
+const CBB_ASSET_V = "20261123032049";
 const CBB_ASSET_V = "";
 const state = {
   book: null, view: "edges", game: "", league: "cbb", market: "spread", marketName: "all",
@@ -703,9 +773,31 @@ const BOOKS = {
   sleeper: { name: "Sleeper", src: "static/books/sleeper.webp" },
   fliff: { name: "Fliff", src: "static/books/fliff.webp" },
   kalshi: { name: "Kalshi", src: "static/books/kalshi.webp" },
+  betmgm: { name: "BetMGM", src: "static/books/betmgm.png" },
+  hardrock: { name: "Hard Rock", src: "static/books/hardrock.webp" },
+  betrivers: { name: "BetRivers", src: "static/books/betrivers.webp" },
+  fanatics: { name: "Fanatics", src: "static/books/fanatics.png" },
+  bovada: { name: "Bovada", src: "static/books/bovada.webp" },
+  bet365: { name: "bet365", src: "static/books/bet365.svg" },
+  pointsbet: { name: "PointsBet", src: "static/books/pointsbet.webp" },
+  thescore: { name: "theScore", src: "static/books/thescore.svg" },
+  caesars: { name: "Caesars", src: "static/books/caesars.png" },
+  betparx: { name: "betPARX", src: "static/books/betparx.webp" },
+  bally: { name: "Bally", src: "static/books/bally.webp" },
+  betway: { name: "Betway", src: "static/books/betway.webp" },
+  stake: { name: "Stake", src: "static/books/stake.svg" },
+  rebet: { name: "Rebet", src: "static/books/rebet.webp" },
+  prophetx: { name: "ProphetX", src: "static/books/prophetx.webp" },
+  unibet: { name: "Unibet", src: "static/books/caesars.png" },
+  sportradar: { name: "Sportradar", src: "static/books/draftkings.png" },
 };
-const SELECTED_BOOK_CHIPS = Object.keys(BOOKS);
-const SELECTED_BOOK_SET = new Set(SELECTED_BOOK_CHIPS);
+// Filter chips stay light — shopping venues still render in books-only strips.
+const SELECTED_BOOK_CHIPS = [
+  "draftkings", "fanduel", "onyx", "courtside", "pinnacle",
+  "underdog", "prizepicks", "pick6", "novig", "sleeper",
+  "fliff", "kalshi",
+];
+const SELECTED_BOOK_SET = new Set(Object.keys(BOOKS));
 const BOOK_LOCAL = Object.fromEntries(
   Object.entries(BOOKS).map(([key, book]) => [key, book.src])
 );
@@ -734,20 +826,10 @@ function isCulledFootballProp(row) {
   const text = `${code} ${row.market || ""} ${row.selection || ""}`
     .toLowerCase()
     .replace(/[+\-_]+/g, " ");
-  // Anytime TD / to-score (all football).
-  if (/anytime[_\s]?(td|tds|touchdown)|anytime[_\s]?touchdown[_\s]?scorer|\bto[_\s]?score\b|touchdown[_\s]?scorer|player[_\s]?anytime|player[_\s]?touchdowns\b/.test(text)) {
-    if (/pass\w*[_\s]?td|rush\w*[_\s]?td|rec\w*[_\s]?td|receiv\w*[_\s]?td/.test(text) && !/anytime|scorer/.test(text)) {
-      /* keep passing/rushing/receiving TD ladders */
-    } else {
-      return true;
-    }
-  }
-  // Tackles + defensive assists — football only (NBA AST stays).
-  if (league === "nfl" || league === "cfb") {
-    if (/tackles?|solo[_\s]?tackles?|tackles?[_\s]?assists?|assisted[_\s]?tackles?/.test(text)) return true;
-    if (/\bassists?\b|\basts?\b/.test(text) && !/point|rebound|pra|pass|rush|receiv|yard|reception/.test(text)) {
-      return true;
-    }
+  // First-TD / scorer specials only — anytime TD + tackles stay (books-only).
+  if (/first[_\s]?td|first[_\s]?touchdown|touchdown[_\s]?scorer|\bto[_\s]?score\b/.test(text)) {
+    if (/anytime|player[_\s]?touchdowns|player[_\s]?anytime/.test(text)) return false;
+    return true;
   }
   return false;
 }
@@ -2063,11 +2145,23 @@ function labsAgreeOnPrice(row) {
   if (side === "over") return mine > line && labs > line;
   return (mine - line) * (labs - line) > 0;
 }
+function bestBookOddsPick(quotes) {
+  /** Highest American on this side (best payout) for books-only shopping. */
+  let best = null;
+  quotes.forEach((row) => {
+    if (row.book == null || !sanePrice(row.book, row.source, row)) return;
+    if (!best || Number(row.book) > Number(best.book)) best = row;
+  });
+  return best;
+}
 function lightDecorate(bet) {
   // Cheap pick/ev only — full decorate() runs later for the visible table rows.
   const quotes = (bet.quotes || []).filter((row) => row.book != null && sanePrice(row.book, row.source, row));
   let pick = null;
-  if (state.boardView === "agree") {
+  const sample = quotes[0];
+  if (sample && isBooksOnlyMarket(sample)) {
+    pick = bestBookOddsPick(quotes) || quotes[0];
+  } else if (state.boardView === "agree") {
     pick = quotes.find((row) => labsAgreeOnPrice(row) && row.clear && row.ev != null)
       || quotes.find((row) => labsAgreeOnPrice(row) && row.ev != null)
       || quotes.find((row) => labsAgreeOnPrice(row));
@@ -2740,9 +2834,31 @@ function fairSource(bet) {
   return "Fair price";
 }
 
+function isBooksOnlyMarket(quote) {
+  /** Anytime TD / tackles+AST / sacks / team sacks / team TDs / punts / 1Q. */
+  if (!quote) return false;
+  if (quote.books_only === true || quote.books_only === 1 || quote.books_only === "true") return true;
+  if (propPeriod(quote) === "q1") return true;
+  const market = String(quote.market || "").toLowerCase();
+  const code = String(quote.market_code || "").toLowerCase();
+  const sel = String(quote.selection || "").toLowerCase();
+  const blob = `${market} ${code} ${sel}`;
+  if (/\b1st[_\s]?quarter\b|first[_\s]?quarter|\bq1\b|\b1q\b/.test(blob)) return true;
+  if (/\bsacks?\b|\bpunts?\b/.test(blob)) return true;
+  if (/tackles?|solo[_\s]?tackles?|tackles?[_\s]?assists?|assisted[_\s]?tackles?/.test(blob)) return true;
+  if (/\bteam[_\s]?touchdowns?\b|\bteam[_\s]?tds?\b|\bteamtds\b|\bttd\b/.test(blob)) return true;
+  if (/anytime[_\s]?(td|tds|touchdown)|touchdown[_\s]?scorer|\bto[_\s]?score\b|player[_\s]?touchdowns\b/.test(blob)) {
+    if (/pass\w*[_\s]?td|rush\w*[_\s]?td|rec\w*[_\s]?td|receiv\w*[_\s]?td/.test(blob) && !/anytime|scorer/.test(blob)) {
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
 function isBettorOddsMarket(quote) {
   /** Player props (any posted line) + full-game ML / spread / total (main + alt). */
   if (!quote) return false;
+  if (isBooksOnlyMarket(quote)) return false;
   const kind = String(quote.kind || "");
   const market = String(quote.market || "").toLowerCase();
   const code = String(quote.market_code || "").toLowerCase();
@@ -2996,13 +3112,16 @@ function flatBet(bet) {
   }
   // Prop Labs / sim odds are priced server-side with skew (NegBin/Poisson).
   // Do not rebuild them with the normal fairProbAtLine helper — that made absurd alts.
-  const showBettor = isBettorOddsMarket(quote);
+  const booksOnly = isBooksOnlyMarket(quote);
+  const showBettor = !booksOnly && isBettorOddsMarket(quote);
   const gameMarket = quote.kind === "ml" || quote.kind === "spread" || quote.kind === "total";
   // Bettor Odds column: Labs on main props; Labs/board tip on full-game ML/spread/total.
   let labsProj = null;
   let labsProbVal = null;
   let labsPrice = null;
-  if (showBettor && quote.kind === "prop") {
+  if (booksOnly) {
+    // No model / Labs price — sportsbook + no-vig fair only.
+  } else if (showBettor && quote.kind === "prop") {
     // Labs usage is an input to the sim — show the projection only here.
     // Priced odds live in the Sim column (built from that usage mean).
     labsProj = quote.labs_mean != null ? quote.labs_mean : null;
@@ -3101,8 +3220,8 @@ function flatBet(bet) {
   const xmin = Number.isFinite(xminRaw) && xminRaw >= 1 ? xminRaw : null;
   const xminTxt = xmin == null ? "" : xmin.toFixed(1);
   // Edge vs book (Prop Pricing Model): P(side) × decimal − 1.
-  let roi = quote.ev != null ? quote.ev : bet.ev;
-  if (roi == null && modelProb != null && bookPrice != null) {
+  let roi = booksOnly ? null : (quote.ev != null ? quote.ev : bet.ev);
+  if (!booksOnly && roi == null && modelProb != null && bookPrice != null) {
     const dec = decimalOdds(bookPrice);
     if (dec != null) roi = modelProb * dec - 1;
   }
@@ -3112,16 +3231,19 @@ function flatBet(bet) {
     const dec = decimalOdds(bookPrice);
     if (dec != null) edgeMkt = Number(fairProb) * dec - 1;
   }
-  const stakeInfo = stakeFromRow(quote, modelProb, bookPrice);
+  const stakeInfo = booksOnly
+    ? { skip: true, stake: 0, note: "books-only — no model stake" }
+    : stakeFromRow(quote, modelProb, bookPrice);
   const qk = stakeInfo.skip ? 0 : stakeInfo.stake;
   // My price = model American for this posted market (sim odds preferred when present).
-  const myPrice = modelPrice != null ? modelPrice : (simPrice != null ? simPrice : null);
-  const myProb = modelProb != null ? modelProb : (simProb != null ? simProb : null);
+  const myPrice = booksOnly ? null : (modelPrice != null ? modelPrice : (simPrice != null ? simPrice : null));
+  const myProb = booksOnly ? null : (modelProb != null ? modelProb : (simProb != null ? simProb : null));
   const lineDisplay = lineCellTxt(quote, side, lineTxtVal);
   const qkTitle = stakeInfo.note || "";
   return {
     bet,
-    clear: Boolean(quote.clear || (bet.quotes || []).some((row) => row.clear)),
+    booksOnly,
+    clear: booksOnly ? false : Boolean(quote.clear || (bet.quotes || []).some((row) => row.clear)),
     game: quote.game || "",
     market: title.tag || "",
     name: title.name || "",
@@ -3130,23 +3252,23 @@ function flatBet(bet) {
     sideTxt: side ? String(side).replace(/_/g, " ") : "",
     line: postedLine,
     lineTxt: lineDisplay,
-    hist,
-    histTxt,
-    z,
-    zTxt,
-    proj: proj.value,
-    projTxt: proj.text,
-    xmin,
-    xminTxt,
-    l5,
-    l5Txt,
-    model: modelProb,
-    modelTxt: priceCell(modelProb, modelPrice),
+    hist: booksOnly ? null : hist,
+    histTxt: booksOnly ? "" : histTxt,
+    z: booksOnly ? null : z,
+    zTxt: booksOnly ? "" : zTxt,
+    proj: booksOnly ? null : proj.value,
+    projTxt: booksOnly ? "" : proj.text,
+    xmin: booksOnly ? null : xmin,
+    xminTxt: booksOnly ? "" : xminTxt,
+    l5: booksOnly ? null : l5,
+    l5Txt: booksOnly ? "" : l5Txt,
+    model: booksOnly ? null : modelProb,
+    modelTxt: booksOnly ? "" : priceCell(modelProb, modelPrice),
     my: myPrice,
-    myTxt: priceCell(myProb, myPrice),
-    sim: simProb,
-    simTxt: priceCell(simProb, simPrice, simProj, { spread: quote.kind === "spread" }),
-    labs: labsProbVal != null ? labsProbVal : labsProj,
+    myTxt: booksOnly ? "" : priceCell(myProb, myPrice),
+    sim: booksOnly ? null : simProb,
+    simTxt: booksOnly ? "" : priceCell(simProb, simPrice, simProj, { spread: quote.kind === "spread" }),
+    labs: booksOnly ? null : (labsProbVal != null ? labsProbVal : labsProj),
     labsTxt: showBettor
       ? priceCell(labsProbVal, labsPrice, labsProj, { spread: quote.kind === "spread" })
       : "",
@@ -3158,15 +3280,13 @@ function flatBet(bet) {
     oddsTxt: priceCell(implied(bookPrice), bookPrice),
     roi,
     ev: roi,
-    roiTxt: pct(roi),
+    roiTxt: booksOnly ? "" : pct(roi),
     edgeMkt,
     edgeMktTxt: pct(edgeMkt),
     qk,
-    qkSkip: Boolean(stakeInfo.skip),
-    qkTitle,
-    qkTxt: stakeInfo.skip
-      ? "—"
-      : (qk == null ? "" : (qk < 1 ? "<$1" : "$" + Math.round(qk))),
+    qkSkip: true,
+    qkTitle: booksOnly ? "Books-only market — compare sportsbook odds vs no-vig fair" : qkTitle,
+    qkTxt: "—",
     start: quote.start || "",
     kind: quote.kind || "",
   };
@@ -3377,6 +3497,88 @@ function bookPanel(bet) {
     }
     return String(a[0].source || "").localeCompare(String(b[0].source || ""));
   });
+  const booksOnly = isBooksOnlyMarket(bet.pick || (bet.quotes || [])[0]);
+  const cols = sortCols();
+  if (booksOnly) {
+    // One chip per sportsbook on this side. Prefer the pick's line; if a book
+    // only posts a nearby line, still show it with the line stamped on the chip.
+    const pick = bet.pick || (bet.quotes || [])[0] || {};
+    const wantSide = String(sideOf(pick) || quoteSideTxt(pick) || "").toLowerCase();
+    const wantLine = pick.line != null ? Number(pick.line) : null;
+    const wantPlayer = String(pick.player || "").toLowerCase();
+    const wantFam = propStatFamily(pick);
+    const wantGid = pick.sim_id || pick.game;
+    const wantPeriod = propPeriod(pick);
+    const pool = [];
+    const seenQ = new Set();
+    const pushQ = (row) => {
+      const k = [row.source, row.side, row.line, row.american || row.book].join("|");
+      if (seenQ.has(k)) return;
+      seenQ.add(k);
+      pool.push(row);
+    };
+    (bet.quotes || []).forEach(pushQ);
+    // Pull sibling lines from the full board so DK 7.0 shows under UD 6.5.
+    ((state.book && state.book.rows) || []).forEach((row) => {
+      if (!row || String(row.player || "").toLowerCase() !== wantPlayer) return;
+      if ((row.sim_id || row.game) !== wantGid) return;
+      if (propPeriod(row) !== wantPeriod) return;
+      if (propStatFamily(row) !== wantFam) return;
+      pushQ(row);
+    });
+    const lineDist = (row) => {
+      if (wantLine == null || row.line == null || !Number.isFinite(Number(row.line))) return 999;
+      return Math.abs(Number(row.line) - wantLine);
+    };
+    const bySrc = new Map();
+    pool.forEach((row) => {
+      if (row.book == null || !sanePrice(row.book, row.source, row)) return;
+      const src = String(row.source || "").toLowerCase();
+      if (!src || !SELECTED_BOOK_SET.has(src)) return;
+      const side = String(sideOf(row) || quoteSideTxt(row) || "").toLowerCase();
+      if (wantSide && side && side !== wantSide) return;
+      // Skip absurd ladder rungs far from the posted line.
+      if (wantLine != null && lineDist(row) > 1.0) return;
+      const prev = bySrc.get(src);
+      if (!prev) {
+        bySrc.set(src, row);
+        return;
+      }
+      const d = lineDist(row);
+      const pd = lineDist(prev);
+      if (d < pd) {
+        bySrc.set(src, row);
+        return;
+      }
+      if (d === pd && Number(row.book) > Number(prev.book)) {
+        bySrc.set(src, row);
+      }
+    });
+    const ranked = [...bySrc.values()].sort((a, b) => {
+      const dd = lineDist(a) - lineDist(b);
+      if (dd) return dd;
+      return Number(b.book) - Number(a.book);
+    });
+    const bestSame = ranked.find((row) => (
+      wantLine == null || row.line == null || Number(row.line) === wantLine
+    ));
+    const bestPx = bestSame != null ? Number(bestSame.book) : (ranked.length ? Number(ranked[0].book) : null);
+    const strip = ranked.length
+      ? `<div class="shop-strip">${ranked.map((row) => {
+        const book = bookInfo(row.source);
+        const sameLine = wantLine == null || row.line == null || Number(row.line) === wantLine;
+        const isBest = sameLine && bestPx != null && Number(row.book) === bestPx;
+        const img = book.src
+          ? `<img class="shop-logo" src="${book.src}" alt="" />`
+          : "";
+        const lineBit = (!sameLine && row.line != null)
+          ? `<span class="shop-line">${escapeHtml(lineTxt(row.line))}</span>`
+          : "";
+        return `<div class="shop-chip${isBest ? " best" : ""}${sameLine ? "" : " alt-line"}" title="${escapeHtml(book.name)}${row.line != null ? " " + lineTxt(row.line) : ""}">${img}<span class="shop-name">${escapeHtml(book.name)}</span>${lineBit}<b>${odds(row.book)}</b></div>`;
+      }).join("")}</div>`
+      : `<div class="shop-empty">No other books posted</div>`;
+    return `<tr class="book-row shop-row"><td colspan="${cols.length}">${strip}</td></tr>`;
+  }
   const books = ordered.length
     ? `<div class="book-panel">${ordered.map((rows) => {
       const row = rows[0];
@@ -3395,7 +3597,6 @@ function bookPanel(bet) {
     ? formPanelHtml(bet, form === undefined ? null : form)
     : "";
   if (!books && !chart) return "";
-  const cols = sortCols();
   return `<tr class="book-row"><td colspan="${cols.length}"><div class="form-panel">${chart}${books}</div></td></tr>`;
 }
 const formCache = {};
@@ -3429,7 +3630,9 @@ function tableFor(list) {
       const open = state.openKey === key;
       const inSlip = state.slip.some((leg) => leg.key === (row.bet && row.bet.key));
       const edgeMktClass = row.edgeMkt == null ? "muted" : (row.edgeMkt > 0 ? "ev" : "ev neg");
-      return `<tr class="${row.clear ? "clear" : ""} ${open ? "open" : ""} ${inSlip ? "slip-on" : ""}" data-key="${key}">
+      // Books-only rows always expand the shopping strip.
+      const showBooks = open || row.booksOnly;
+      return `<tr class="${row.clear ? "clear" : ""} ${open ? "open" : ""} ${inSlip ? "slip-on" : ""} ${row.booksOnly ? "books-only" : ""}" data-key="${key}">
         <td class="left">${row.game || ""}</td>
         <td class="left"><div class="cell-main">${row.icon}<div><b>${row.name}</b><span>${row.market}</span></div></div></td>
         <td>${row.lineTxt || ""}</td>
@@ -3444,7 +3647,7 @@ function tableFor(list) {
         <td class="${roiClass}">${row.roiTxt}</td>
         <td class="${edgeMktClass}">${row.edgeMktTxt}</td>
         <td${row.qkTitle ? ` title="${String(row.qkTitle).replace(/"/g, "&quot;")}"` : ""}${row.qkSkip ? ` class="muted"` : ""}>${row.qkTxt}</td>
-      </tr>${open ? bookPanel(row.bet) : ""}`;
+      </tr>${showBooks ? bookPanel(row.bet) : ""}`;
     }).join("")}
   </tbody></table></div>`;
 }
