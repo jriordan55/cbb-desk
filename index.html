@@ -180,6 +180,12 @@
     border-radius: 4px;
     padding: 1px;
   }
+  .miya-col {
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: 0.02em;
+    color: var(--ink);
+  }
   .book-inline {
     display: inline-flex;
     align-items: center;
@@ -710,7 +716,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const CBB_STATIC = true;
-const CBB_ASSET_V = "20261125110753";
+const CBB_ASSET_V = "20261126025915";
 const CBB_ASSET_V = "";
 const state = {
   book: null, view: "edges", game: "", league: "cbb", market: "spread", marketName: "all",
@@ -769,7 +775,6 @@ const BOOKS = {
   underdog: { name: "Underdog", src: "static/books/underdog.webp" },
   prizepicks: { name: "PrizePicks", src: "static/books/prizepicks.webp" },
   pick6: { name: "Pick6", src: "static/books/pick6.webp" },
-  novig: { name: "Novig", src: "static/books/novig.webp" },
   sleeper: { name: "Sleeper", src: "static/books/sleeper.webp" },
   fliff: { name: "Fliff", src: "static/books/fliff.webp" },
   kalshi: { name: "Kalshi", src: "static/books/kalshi.webp" },
@@ -794,7 +799,7 @@ const BOOKS = {
 // Filter chips stay light — shopping venues still render in books-only strips.
 const SELECTED_BOOK_CHIPS = [
   "draftkings", "fanduel", "onyx", "courtside", "pinnacle",
-  "underdog", "prizepicks", "pick6", "novig", "sleeper",
+  "underdog", "prizepicks", "pick6", "sleeper",
   "fliff", "kalshi",
 ];
 const SELECTED_BOOK_SET = new Set(Object.keys(BOOKS));
@@ -1001,7 +1006,10 @@ function projLabel(value, { spread = false } = {}) {
   if (!Number.isFinite(n)) return "";
   return spread ? signedLine(n) : (Math.abs(n - Math.round(n)) < 1e-9 ? String(Math.round(n * 10) / 10) : n.toFixed(1));
 }
-/** Internal sim mean is "points this team wins by". Display as a fair spread: −fav / +dog. */
+/**
+ * Seat margin ("points this team wins by") → fair spread next to Line.
+ * − favorite / + dog — same polarity as the posted line.
+ */
 function spreadProjLine(winBy) {
   const n = Number(winBy);
   if (!Number.isFinite(n)) return null;
@@ -1019,21 +1027,19 @@ function homeMarginOf(row) {
   if (Number.isFinite(home) && Number.isFinite(away)) return home - away;
   return null;
 }
-function spreadTeamMean(row, rawMean) {
-  /** Margin from the selected team's POV. Never leave a home margin on an away row. */
+function spreadTeamMean(row, rawMean, { preferSimScores = true } = {}) {
+  /** Margin from the selected team's POV (positive = this team wins by). */
   const seat = resolveTeamSeat(row);
-  const homeMu = homeMarginOf(row);
-  if (seat === "home" || seat === "away") {
-    if (homeMu != null) return seat === "home" ? homeMu : -homeMu;
-    const n = Number(rawMean);
-    if (!Number.isFinite(n)) return null;
-    // Legacy boards stamped home margin onto every seat. If this away row's
-    // mean matches the home favorite margin sign, flip it.
-    if (seat === "away" && n > 0) return -n;
-    if (seat === "home" && n < 0) return -n;
-    return n;
+  // Only the sim/My columns may rebuild margin from sim_away/sim_home.
+  // Evan Miya must keep his own tip mean — otherwise Miya == Proj every row.
+  if (preferSimScores) {
+    const homeMu = homeMarginOf(row);
+    if ((seat === "home" || seat === "away") && homeMu != null) {
+      return seat === "home" ? homeMu : -homeMu;
+    }
   }
   const n = Number(rawMean);
+  // model/sim/miya means are already seat-oriented (points this team wins by).
   return Number.isFinite(n) ? n : null;
 }
 function projectionOf(quote, bet) {
@@ -1129,10 +1135,10 @@ function sanePrice(price, source, row) {
     return true;
   }
   // Big chalk moneylines (Ohio St -6500 etc.) are real — only reject absurd non-ML juice.
-  // Exchange mains (Novig) sometimes post stale last-trade +900 on a spread; kill those.
+  // Exchange mains sometimes post stale last-trade +900 on a spread; kill those.
   const kind = String((row && row.kind) || "");
   const src = String(source || "").toLowerCase();
-  const exchange = src === "novig" || src === "kalshi" || src === "polymarket";
+  const exchange = src === "kalshi" || src === "polymarket";
   let limit = 2500;
   if (kind === "ml") limit = 100000;
   else if (kind === "spread" || kind === "total" || kind === "team_total") {
@@ -1524,9 +1530,14 @@ function impossibleMarketLine(row) {
 function isMultiPlayerProp(row) {
   // Onyx "A + B" totals and "A :: B" matchups — not single-player props.
   if (!row || row.kind !== "prop") return false;
-  const text = `${row.player || ""} ${row.selection || ""}`;
+  const player = String(row.player || "");
+  const selection = String(row.selection || "");
+  const text = `${player} ${selection}`;
   if (text.includes("::")) return true;
-  if (/[A-Za-z]\s\+\s[A-Za-z]/.test(text)) return true;
+  // "Silas Demary Jr. + John Blackwell" — Jr./roman before +, not just letter+letter.
+  if (player.includes(" + ") || selection.includes(" + ")) return true;
+  if (/[A-Za-z.]\s*\+\s*[A-Za-z]/.test(text)) return true;
+  if (/[A-Za-z]\s+\/\s+[A-Za-z]/.test(player)) return true;
   if (/\s+vs\.?\s+/i.test(text)) return true;
   const code = String(row.market_code || "").toLowerCase();
   return /player_matchup|matchup_prop|player_race|two_player|multi_player|player_vs_player/.test(code);
@@ -3112,9 +3123,36 @@ function fairProbAtLine(mean, line, side, spread) {
   if (!Number.isFinite(p)) return null;
   return Math.min(Math.max(p, 0.01), 0.99);
 }
+function withMiyaFields(quote, bet) {
+  /** Pull Evan Miya tip off any quote in the group — best-book pick often lacks it. */
+  if (!quote || quote.kind === "prop") return quote;
+  if (quote.miya_odds != null || quote.miya_prob != null || quote.miya_mean != null
+    || String(quote.sharp_src || "") === "evanmiya") {
+    return quote;
+  }
+  const hit = ((bet && bet.quotes) || []).find((row) =>
+    row
+    && (String(row.sharp_src || "") === "evanmiya"
+      || row.miya_odds != null
+      || row.miya_prob != null
+      || row.miya_mean != null
+      || (row.sharp_odds != null && String(row.sharp_src || "") === "evanmiya"))
+  );
+  if (!hit) return quote;
+  return Object.assign({}, quote, {
+    sharp_src: hit.sharp_src || quote.sharp_src,
+    sharp_odds: quote.sharp_odds != null ? quote.sharp_odds : hit.sharp_odds,
+    sharp_prob: quote.sharp_prob != null ? quote.sharp_prob : hit.sharp_prob,
+    sharp_mean: quote.sharp_mean != null ? quote.sharp_mean : hit.sharp_mean,
+    miya_odds: quote.miya_odds != null ? quote.miya_odds : hit.miya_odds,
+    miya_prob: quote.miya_prob != null ? quote.miya_prob : hit.miya_prob,
+    miya_mean: quote.miya_mean != null ? quote.miya_mean : hit.miya_mean,
+  });
+}
 function flatBet(bet) {
   const rawPick = bet.pick || {};
-  const quote = rawPick.kind === "prop" ? enrichPropQuote(rawPick) : rawPick;
+  const base = rawPick.kind === "prop" ? enrichPropQuote(rawPick) : rawPick;
+  const quote = withMiyaFields(base, bet);
   const enrichedBet = quote === rawPick ? bet : Object.assign({}, bet, { pick: quote });
   const spread = isSpread(bet);
   const title = titleOf(enrichedBet);
@@ -3162,8 +3200,7 @@ function flatBet(bet) {
     labsProbVal = null;
     labsPrice = null;
   } else if (showBettor && gameMarket) {
-    // Labs mean only — never treat sharp/sim margin as Labs (that minted -9900
-    // chalk by re-pricing through fairProbAtLine and ignoring sharp_odds).
+    // Bettor Odds column = Labs only on game markets. Evan Miya lives in its own column.
     if (quote.labs_mean != null) {
       const labsTeamMean = spread ? spreadTeamMean(quote, quote.labs_mean) : quote.labs_mean;
       labsProj = quote.kind === "ml" ? null : (spread ? labsTeamMean : quote.labs_mean);
@@ -3174,22 +3211,41 @@ function flatBet(bet) {
       labsPrice = quote.labs_odds != null
         ? quote.labs_odds
         : (labsProbVal != null ? americanFromProb(labsProbVal) : null);
-    } else {
-      // nfelo / Sasser / Miya board tip — prefer stamped odds over a reprice.
-      const sharpMean = quote.sharp_mean != null ? quote.sharp_mean : quote.miya_mean;
-      // sharp_mean is already seat-oriented on CFB/NFL boards; don't flip via sim.
-      const sharpTeamMean = Number.isFinite(Number(sharpMean)) ? Number(sharpMean) : null;
-      if (quote.kind === "spread" || quote.kind === "total") {
-        labsProj = sharpTeamMean != null ? sharpTeamMean : null;
-        if (quote.kind === "spread" && labsProj != null) labsProj = spreadProjLine(labsProj);
-      }
-      if (quote.sharp_odds != null || quote.miya_odds != null) {
-        labsProbVal = quote.sharp_prob != null ? quote.sharp_prob : quote.miya_prob;
-        labsPrice = quote.sharp_odds != null ? quote.sharp_odds : quote.miya_odds;
-      } else if (sharpTeamMean != null && postedLine != null) {
-        labsProbVal = fairProbAtLine(sharpTeamMean, postedLine, sideOf(quote) || side, spread);
-        labsPrice = labsProbVal != null ? americanFromProb(labsProbVal) : null;
-      }
+    }
+  }
+  // Evan Miya column — full-game ML / spread / total only (never props).
+  let miyaProj = null;
+  let miyaProbVal = null;
+  let miyaPrice = null;
+  const showMiya = !booksOnly && gameMarket && (
+    String(quote.sharp_src || "") === "evanmiya"
+    || quote.miya_odds != null
+    || quote.miya_prob != null
+    || quote.miya_mean != null
+  );
+  if (showMiya) {
+    const miyaMeanRaw = quote.miya_mean != null
+      ? quote.miya_mean
+      : (String(quote.sharp_src || "") === "evanmiya" ? quote.sharp_mean : null);
+    const miyaTeamMean = spread
+      ? spreadTeamMean(quote, miyaMeanRaw, { preferSimScores: false })
+      : (Number.isFinite(Number(miyaMeanRaw)) ? Number(miyaMeanRaw) : null);
+    if (quote.kind === "spread" || quote.kind === "total") {
+      // Same fair-spread convention as Proj (−fav / +dog).
+      miyaProj = quote.kind === "spread" && miyaTeamMean != null
+        ? spreadProjLine(miyaTeamMean)
+        : miyaTeamMean;
+    }
+    if (quote.miya_odds != null || (String(quote.sharp_src || "") === "evanmiya" && quote.sharp_odds != null)) {
+      miyaProbVal = quote.miya_prob != null
+        ? quote.miya_prob
+        : (String(quote.sharp_src || "") === "evanmiya" ? quote.sharp_prob : null);
+      miyaPrice = quote.miya_odds != null
+        ? quote.miya_odds
+        : (String(quote.sharp_src || "") === "evanmiya" ? quote.sharp_odds : null);
+    } else if (miyaTeamMean != null && postedLine != null) {
+      miyaProbVal = fairProbAtLine(miyaTeamMean, postedLine, sideOf(quote) || side, spread);
+      miyaPrice = miyaProbVal != null ? americanFromProb(miyaProbVal) : null;
     }
   }
   const modelPrice = modelProb != null
@@ -3206,11 +3262,15 @@ function flatBet(bet) {
   let simProj = null;
   // Never paint margin/total means into the Sim stack for moneylines.
   if (quote.kind !== "prop" && quote.kind !== "ml") {
-    simProj = quote.sim_mean != null ? quote.sim_mean : null;
-    if (simProj == null && quote.price_src === "sim" && quote.model_mean != null) {
-      simProj = quote.model_mean;
+    const simRaw = quote.sim_mean != null
+      ? quote.sim_mean
+      : (quote.price_src === "sim" && quote.model_mean != null ? quote.model_mean : null);
+    if (quote.kind === "spread") {
+      const simTeam = spreadTeamMean(quote, simRaw);
+      simProj = simTeam != null ? spreadProjLine(simTeam) : null;
+    } else {
+      simProj = simRaw;
     }
-    if (quote.kind === "spread" && simProj != null) simProj = spreadProjLine(simProj);
   }
   const boardFair = quote.fair_prob != null
     ? { prob: null, odds: null }
@@ -3306,6 +3366,10 @@ function flatBet(bet) {
     labsTxt: showBettor
       ? priceCell(labsProbVal, labsPrice, labsProj, { spread: quote.kind === "spread" })
       : "",
+    miya: booksOnly ? null : (miyaProbVal != null ? miyaProbVal : miyaProj),
+    miyaTxt: showMiya
+      ? priceCell(miyaProbVal, miyaPrice, miyaProj, { spread: quote.kind === "spread" })
+      : "",
     fair: fairProb,
     fairTxt: priceCell(fairProb, fairPrice),
     book: quote.source || "",
@@ -3327,6 +3391,7 @@ function flatBet(bet) {
 }
 
 const BETTOR_ODDS_LOGO = `<img class="labs-logo" src="/static/books/bettorodds.png" alt="Bettor Odds" title="Bettor Odds" />`;
+const MIYA_LOGO = `<img class="labs-logo" src="/static/books/evanmiya.png" alt="Evan Miya" title="Evan Miya" />`;
 const SORT_COLS_ALL = [
   ["game", "Game"],
   ["name", "Market"],
@@ -3335,6 +3400,7 @@ const SORT_COLS_ALL = [
   ["xmin", "xMin"],
   ["l5", "L10 Avg"],
   ["labs", BETTOR_ODDS_LOGO],
+  ["miya", MIYA_LOGO],
   ["my", "My Price"],
   ["fair", "No-vig fair"],
   ["book", "Book"],
@@ -3345,18 +3411,35 @@ const SORT_COLS_ALL = [
 ];
 const PROP_ONLY_COLS = new Set(["l5", "xmin"]);
 const BASKETBALL_PROP_COLS = new Set(["xmin"]);
+const GAME_ONLY_COLS = new Set(["miya"]);
 function showXminCol() {
   if (state.market !== "prop") return false;
   const lg = String(state.league || "cbb").toLowerCase();
   return lg === "all" || lg === "nba" || lg === "cbb";
 }
+function showMiyaCol() {
+  // Evan Miya tip is ML / spread / total only — hide on the props board.
+  return state.market !== "prop";
+}
+function showBettorOddsCol() {
+  // CBB game markets compare My Price vs Miya — Bettor Odds stays on props / other sports.
+  const lg = String(state.league || "cbb").toLowerCase();
+  const mkt = String(state.market || "").toLowerCase();
+  if (lg === "cbb" && (mkt === "spread" || mkt === "total" || mkt === "ml")) return false;
+  return true;
+}
 function sortCols() {
-  // L10 is player-prop only; xMin is NBA/CBB props only.
+  // L10 is player-prop only; xMin is NBA/CBB props only; Miya is game markets only.
+  let cols = SORT_COLS_ALL;
   if (state.market === "prop") {
-    if (showXminCol()) return SORT_COLS_ALL;
-    return SORT_COLS_ALL.filter(([key]) => !BASKETBALL_PROP_COLS.has(key));
+    cols = cols.filter(([key]) => !GAME_ONLY_COLS.has(key));
+    if (showXminCol()) return cols;
+    return cols.filter(([key]) => !BASKETBALL_PROP_COLS.has(key));
   }
-  return SORT_COLS_ALL.filter(([key]) => !PROP_ONLY_COLS.has(key));
+  cols = cols.filter(([key]) => !PROP_ONLY_COLS.has(key));
+  if (!showMiyaCol()) cols = cols.filter(([key]) => !GAME_ONLY_COLS.has(key));
+  if (!showBettorOddsCol()) cols = cols.filter(([key]) => key !== "labs");
+  return cols;
 }
 
 function sortValue(row, key) {
@@ -3364,7 +3447,7 @@ function sortValue(row, key) {
   if (key === "name") return `${row.name} ${row.market}`.toLowerCase();
   if (key === "side") return String(row.side || "").toLowerCase();
   if (key === "book") return String(row.book || "").toLowerCase();
-  if (key === "line" || key === "proj" || key === "xmin" || key === "l5" || key === "model" || key === "my" || key === "sim" || key === "labs" || key === "fair" || key === "odds" || key === "roi" || key === "ev" || key === "edgeMkt" || key === "qk") {
+  if (key === "line" || key === "proj" || key === "xmin" || key === "l5" || key === "model" || key === "my" || key === "sim" || key === "labs" || key === "miya" || key === "fair" || key === "odds" || key === "roi" || key === "ev" || key === "edgeMkt" || key === "qk") {
     const n = Number(row[key === "ev" ? "roi" : key]);
     return Number.isFinite(n) ? n : (state.sortDir === "asc" ? Infinity : -Infinity);
   }
@@ -3383,7 +3466,7 @@ function cheapSortValue(bet, key) {
     const n = Number(bet.line != null ? bet.line : pick.line);
     return Number.isFinite(n) ? n : (state.sortDir === "asc" ? Infinity : -Infinity);
   }
-  if (key === "proj" || key === "xmin" || key === "l5" || key === "model" || key === "my" || key === "sim" || key === "labs" || key === "fair" || key === "odds") {
+  if (key === "proj" || key === "xmin" || key === "l5" || key === "model" || key === "my" || key === "sim" || key === "labs" || key === "miya" || key === "fair" || key === "odds") {
     const map = {
       proj: pick.model_mean != null ? pick.model_mean : pick.sim_mean,
       xmin: pick.xmin,
@@ -3392,6 +3475,7 @@ function cheapSortValue(bet, key) {
       my: pick.model_prob != null ? pick.model_prob : pick.sim_prob,
       sim: pick.sim_prob,
       labs: pick.labs_prob != null ? pick.labs_prob : pick.labs_mean,
+      miya: pick.miya_prob != null ? pick.miya_prob : (pick.sharp_src === "evanmiya" ? pick.sharp_prob : pick.miya_mean),
       fair: pick.fair_prob,
       odds: pick.book != null ? pick.book : pick.american,
     };
@@ -3427,14 +3511,16 @@ function sortHeader(key, label) {
       : (key === "edgeMkt"
         ? ` title="Book edge vs no-vig market = fair win% × book decimal − 1"`
         : (key === "proj"
-          ? ` title="Model projection. Spreads use line signs (− favorite / + dog). Props are points/yards/TDs."`
+          ? ` title="Model fair spread for this side (− favorite / + dog). Props are points/yards/TDs."`
           : (key === "l5"
             ? ` title="Last 10 games average of the actual result for this market (this season for college)"`
             : (key === "labs"
-              ? ` title="Bettor Odds tip: usage mean (props) or board tip odds/proj (ML/spread/total), including alts"`
-              : (key === "my"
-                ? ` title="My price for this market: model American odds and win%"`
-                : ""))))));
+              ? ` title="Bettor Odds tip: usage mean (props) or Labs board tip (ML/spread/total)"`
+              : (key === "miya"
+                ? ` title="Evan Miya tip for full-game ML / spread / total (odds + proj)"`
+                : (key === "my"
+                  ? ` title="My price for this market: model American odds and win%"`
+                  : "")))))));
   return `<th class="${key === "game" || key === "name" ? "left " : ""}${active ? "active" : ""}" data-sort="${key}"${tip}>${label}<span class="arrow">${arrow}</span></th>`;
 }
 
@@ -3673,7 +3759,8 @@ function tableFor(list) {
         <td>${row.projTxt || ""}</td>
         ${showXminCol() ? `<td>${row.xminTxt || ""}</td>` : ""}
         ${propCols ? `<td>${row.l5Txt || ""}</td>` : ""}
-        <td>${row.labsTxt}</td>
+        ${showBettorOddsCol() ? `<td>${row.labsTxt}</td>` : ""}
+        ${showMiyaCol() ? `<td>${row.miyaTxt || ""}</td>` : ""}
         <td>${row.myTxt}</td>
         <td>${row.fairTxt}</td>
         <td class="left">${row.bookTxt}</td>
@@ -3849,19 +3936,31 @@ function boxInjuryStatus(player, side, injuryStatus) {
 function boxStatusIsOut(status) {
   const raw = String(status || "").toLowerCase().replace(/[_-]+/g, " ");
   if (!raw) return false;
+  // Surgery cards without a clear still sit even when ESPN leaves status=Q.
+  if (/\bsurgery\b/.test(raw) && !/cleared|full participant|will play|expected to play|expected to be active/.test(raw)) {
+    return true;
+  }
   if (/questionable|day to day|\bgtd\b|game time|probable/.test(raw)) return false;
   return /^(out|doubtful|inactive|suspended|ir)\b/.test(raw)
     || /\b(out|doubtful|inactive|suspended)\b/.test(raw);
 }
 function boxPlayerOut(player, side, injuryStatus) {
-  return boxStatusIsOut(boxInjuryStatus(player, side, injuryStatus));
+  const st = boxInjuryStatus(player, side, injuryStatus);
+  if (boxStatusIsOut(st)) return true;
+  const detail = String(player.injury_detail || player.detail || player.note || "");
+  if (/\bsurgery\b/i.test(detail) && !/cleared|full participant|will play|expected to play|expected to be active/i.test(detail)) {
+    return true;
+  }
+  return false;
 }
 function boxPlayerLabel(player, out, label, status) {
   const text = label != null ? label : boxShort(player.player);
   const st = String(status || player.injury || player.status || "");
+  const detail = String(player.injury_detail || player.detail || "");
+  const surgery = /\bsurgery\b/i.test(`${st} ${detail}`);
   const q = !out && /questionable|day.to.day|\bgtd\b|game.time/i.test(st);
   let tag = "";
-  if (out) tag = ` <span class="tag">Out</span>`;
+  if (out) tag = ` <span class="tag">${surgery ? "Surgery" : "Out"}</span>`;
   else if (q) tag = ` <span class="tag">Q</span>`;
   return `${escapeHtml(text)}${tag}`;
 }
@@ -4626,7 +4725,7 @@ if (CBB_STATIC) {
   $("refresh").onclick = async () => {
     $("refresh").disabled = true;
     $("refresh").textContent = "Refreshing…";
-    $("status").textContent = "Pulling PrizePicks, Kalshi, Polymarket, Underdog, Novig, Onyx, Pick6…";
+    $("status").textContent = "Injuries → resim tips → pulling books…";
     try {
       throw new Error("Live refresh runs on the local desk");
       const body = await response.json();
