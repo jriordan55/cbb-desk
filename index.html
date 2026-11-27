@@ -716,7 +716,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const CBB_STATIC = true;
-const CBB_ASSET_V = "20261126025915";
+const CBB_ASSET_V = "20261127043002";
 const CBB_ASSET_V = "";
 const state = {
   book: null, view: "edges", game: "", league: "cbb", market: "spread", marketName: "all",
@@ -1237,13 +1237,26 @@ function lineTxt(value) {
 function initials(name) {
   return String(name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
 }
+const NFL_ID_ABBR = {
+  1: "atl", 2: "buf", 3: "chi", 4: "cin", 5: "cle", 6: "dal", 7: "den", 8: "det",
+  9: "gb", 10: "ten", 11: "ind", 12: "kc", 13: "lv", 14: "lar", 15: "mia", 16: "min",
+  17: "ne", 18: "no", 19: "nyg", 20: "nyj", 21: "phi", 22: "ari", 23: "pit", 24: "lac",
+  25: "sf", 26: "sea", 27: "tb", 28: "wsh", 29: "car", 30: "jax", 33: "bal", 34: "hou",
+};
 function espnLogoUrl(league, teamId) {
   const tid = String(teamId || "").trim();
   if (!tid) return "";
   const lg = String(league || "cbb").toLowerCase();
   if (lg === "nba") return `https://a.espncdn.com/i/teamlogos/nba/500/${tid}.png`;
-  if (lg === "nfl") return `https://a.espncdn.com/i/teamlogos/nfl/500/${tid}.png`;
+  if (lg === "nfl") {
+    // Prefer numeric id (works on CDN); abbr is a client onerror fallback via logo().
+    return `https://a.espncdn.com/i/teamlogos/nfl/500/${tid}.png`;
+  }
   return `https://a.espncdn.com/i/teamlogos/ncaa/500/${tid}.png`;
+}
+function espnNflAbbrLogoUrl(teamId) {
+  const abbr = NFL_ID_ABBR[String(teamId || "").trim()];
+  return abbr ? `https://a.espncdn.com/i/teamlogos/nfl/500/${abbr}.png` : "";
 }
 function espnFaceUrl(league, athleteId) {
   const tid = String(athleteId || "").trim();
@@ -1280,16 +1293,22 @@ function rowFace(row) {
 }
 function logo(src, name, league, teamId) {
   const primary = String(src || "").trim();
-  const fallback = espnLogoUrl(league, teamId);
+  const lg = String(league || "cbb").toLowerCase();
+  const idUrl = espnLogoUrl(lg, teamId);
+  const abbrUrl = lg === "nfl" ? espnNflAbbrLogoUrl(teamId) : "";
   const init = initials(name);
-  if (!primary && !fallback) return `<span class="logo">${init}</span>`;
-  if (!primary) {
-    return `<img src="${fallback}" alt="" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="this.outerHTML='<span class=logo>${init}</span>'" />`;
+  // NFL: abbr CDN first (most reliable), then numeric id, then /media.
+  // Eager load — lazy imgs inside the box modal often error into initials.
+  const chain = lg === "nfl"
+    ? [...new Set([abbrUrl, idUrl, primary].filter(Boolean))]
+    : [...new Set([primary, idUrl, abbrUrl].filter(Boolean))];
+  if (!chain.length) return `<span class="logo">${init}</span>`;
+  const esc = (u) => String(u).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  let onerr = `this.outerHTML='<span class=logo>${init}</span>'`;
+  for (let i = chain.length - 1; i >= 1; i--) {
+    onerr = `this.onerror=function(){${onerr}};this.src='${esc(chain[i])}';`;
   }
-  const next = fallback && fallback !== primary
-    ? `this.onerror=null;this.src='${fallback}';`
-    : `this.outerHTML='<span class=logo>${init}</span>'`;
-  return `<img src="${primary}" alt="" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="${next}" />`;
+  return `<img src="${chain[0]}" alt="" referrerpolicy="no-referrer" loading="eager" decoding="async" onerror="${onerr}" />`;
 }
 function face(src) {
   if (!src) return `<span class="face"></span>`;
@@ -2009,7 +2028,10 @@ function marketKey(row) {
 function isFootballLateQuarter(row) {
   const league = rowLeague(row);
   if (league !== "cfb" && league !== "nfl") return false;
+  // Drop 2H entirely, plus 2Q/3Q/4Q.
+  if (propPeriod(row) === "h2") return true;
   const text = `${row.market_code || ""} ${row.market || ""}`.toLowerCase();
+  if (/\b2nd_half\b|\b2nd half\b|second half|(^|[_\s])(2h|h2)($|[_\s])/.test(text)) return true;
   if (/\b2nd_quarter\b|\b3rd_quarter\b|\b4th_quarter\b/.test(text)) return true;
   if (/\b2nd quarter\b|\b3rd quarter\b|\b4th quarter\b/.test(text)) return true;
   if (/(^|[_\s])(2q|3q|4q|q2|q3|q4)($|[_\s])/.test(text)) return true;
@@ -2468,8 +2490,14 @@ function readableAccent(hex, fallback = "#001a4d") {
   return hexLuma(c) > 0.62 ? fallback : c;
 }
 function teamNorm(name) {
-  const raw = String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  let raw = String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   if (!raw) return "";
+  // Books / feeds mangle 49ers → "SF ers" / "San Francisco ers" when digits drop.
+  raw = raw
+    .replace(/\b(sf|san francisco)\s+ers\b/g, "san francisco 49ers")
+    .replace(/\b49\s*ers\b/g, "49ers")
+    .replace(/\s+/g, " ")
+    .trim();
   const compact = raw.replace(/\s+/g, "");
   // BestBook / book abbrevs + school nicknames → one key for box seating.
   const aliases = {
@@ -2539,8 +2567,53 @@ function teamNorm(name) {
     wvu: "west virginia", westvirginia: "west virginia",
     ne: "northeastern", northeastern: "northeastern",
     neu: "northeastern",
+    // NFL last — BestBook "KC Chiefs" / "IND Colts" must beat college bare codes.
+    aricardinals: "arizona cardinals", "ari cardinals": "arizona cardinals",
+    atlfalcons: "atlanta falcons", "atl falcons": "atlanta falcons",
+    balravens: "baltimore ravens", "bal ravens": "baltimore ravens",
+    bufbills: "buffalo bills", "buf bills": "buffalo bills", bills: "buffalo bills",
+    carpanthers: "carolina panthers", "car panthers": "carolina panthers",
+    chibears: "chicago bears", "chi bears": "chicago bears",
+    cinbengals: "cincinnati bengals", "cin bengals": "cincinnati bengals", bengals: "cincinnati bengals",
+    clebrowns: "cleveland browns", "cle browns": "cleveland browns", browns: "cleveland browns",
+    dalcowboys: "dallas cowboys", "dal cowboys": "dallas cowboys", cowboys: "dallas cowboys",
+    denbroncos: "denver broncos", "den broncos": "denver broncos", broncos: "denver broncos",
+    detlions: "detroit lions", "det lions": "detroit lions",
+    gbpackers: "green bay packers", "gb packers": "green bay packers", packers: "green bay packers",
+    greenbaypackers: "green bay packers",
+    houtexans: "houston texans", "hou texans": "houston texans", texans: "houston texans",
+    indcolts: "indianapolis colts", "ind colts": "indianapolis colts", colts: "indianapolis colts",
+    jaxjaguars: "jacksonville jaguars", jacjaguars: "jacksonville jaguars",
+    "jax jaguars": "jacksonville jaguars", "jac jaguars": "jacksonville jaguars", jaguars: "jacksonville jaguars",
+    kcchiefs: "kansas city chiefs", "kc chiefs": "kansas city chiefs", chiefs: "kansas city chiefs",
+    kansascitychiefs: "kansas city chiefs",
+    lvraiders: "las vegas raiders", "lv raiders": "las vegas raiders", raiders: "las vegas raiders",
+    lasvegasraiders: "las vegas raiders", oakraiders: "las vegas raiders",
+    lachargers: "los angeles chargers", "la chargers": "los angeles chargers", chargers: "los angeles chargers",
+    larams: "los angeles rams", "la rams": "los angeles rams", rams: "los angeles rams",
+    miadolphins: "miami dolphins", "mia dolphins": "miami dolphins", dolphins: "miami dolphins",
+    minvikings: "minnesota vikings", "min vikings": "minnesota vikings", vikings: "minnesota vikings",
+    nepatriots: "new england patriots", "ne patriots": "new england patriots",
+    patriots: "new england patriots", newenglandpatriots: "new england patriots",
+    nosaints: "new orleans saints", "no saints": "new orleans saints", saints: "new orleans saints",
+    neworleanssaints: "new orleans saints",
+    nygiants: "new york giants", "ny giants": "new york giants", giants: "new york giants",
+    nyjets: "new york jets", "ny jets": "new york jets", jets: "new york jets",
+    phieagles: "philadelphia eagles", "phi eagles": "philadelphia eagles", eagles: "philadelphia eagles",
+    pitsteelers: "pittsburgh steelers", "pit steelers": "pittsburgh steelers", steelers: "pittsburgh steelers",
+    sf49ers: "san francisco 49ers", sfers: "san francisco 49ers", "sf 49ers": "san francisco 49ers",
+    sanfrancisco49ers: "san francisco 49ers", sanfranciscoers: "san francisco 49ers",
+    "49ers": "san francisco 49ers",
+    seaseahawks: "seattle seahawks", "sea seahawks": "seattle seahawks", seahawks: "seattle seahawks",
+    tbbuccaneers: "tampa bay buccaneers", "tb buccaneers": "tampa bay buccaneers",
+    buccaneers: "tampa bay buccaneers", bucs: "tampa bay buccaneers", tampabaybuccaneers: "tampa bay buccaneers",
+    tentitans: "tennessee titans", "ten titans": "tennessee titans", titans: "tennessee titans",
+    wshcommanders: "washington commanders", wascommanders: "washington commanders",
+    "wsh commanders": "washington commanders", "was commanders": "washington commanders",
+    commanders: "washington commanders",
   };
-  return aliases[compact] || aliases[raw] || compact;
+  // Prefer spaced raw so "Indianapolis Colts" stays comparable to aliased book labels.
+  return aliases[compact] || aliases[raw] || raw;
 }
 function sameTeam(a, b) {
   const left = teamNorm(a);
@@ -2550,6 +2623,14 @@ function sameTeam(a, b) {
   // "Florida" must not match "Florida State" (prefix / substring traps).
   if (left.startsWith(right + " ") || right.startsWith(left + " ")) return false;
   if (left.endsWith(" " + right) || right.endsWith(" " + left)) return false;
+  // Shared NFL / NBA mascot last-token (aliases already collapsed book abbrevs).
+  const leftParts = left.split(/\s+/);
+  const rightParts = right.split(/\s+/);
+  if (leftParts.length >= 1 && rightParts.length >= 1) {
+    const leftTail = leftParts[leftParts.length - 1];
+    const rightTail = rightParts[rightParts.length - 1];
+    if (leftTail && leftTail === rightTail && leftTail.length >= 4) return true;
+  }
   // Nicknames are normalized via aliases; do not fuzzy-match multi-word schools.
   if (left.includes(" ") || right.includes(" ")) return false;
   return left.includes(right) || right.includes(left);
@@ -2875,7 +2956,7 @@ function caption(bet) {
 function fairSource(bet) {
   const src = bet.pick && bet.pick.price_src;
   if (src === "labs") return "Bettor Odds prices";
-  if (src === "evanmiya" || src === "sasser" || src === "nfelo" || src === "arkndjl") return "Board prices";
+  if (src === "evanmiya" || src === "sasser" || src === "nfelo" || src === "arkndjl" || src === "ours") return "Board prices";
   return "Fair price";
 }
 
@@ -3418,8 +3499,9 @@ function showXminCol() {
   return lg === "all" || lg === "nba" || lg === "cbb";
 }
 function showMiyaCol() {
-  // Evan Miya tip is ML / spread / total only — hide on the props board.
-  return state.market !== "prop";
+  // Evan Miya is CBB game markets only — never show on NFL/CFB/NBA/props.
+  if (state.market === "prop") return false;
+  return String(state.league || "cbb").toLowerCase() === "cbb";
 }
 function showBettorOddsCol() {
   // CBB game markets compare My Price vs Miya — Bettor Odds stays on props / other sports.
@@ -3791,6 +3873,9 @@ const BOX_STATS_CFB = [
   ["anytime_td", "aTD"],
 ];
 const boxCache = {};
+function clearBoxCache() {
+  for (const key of Object.keys(boxCache)) delete boxCache[key];
+}
 function boxStatsFor(league) {
   const lg = String(league || "").toLowerCase();
   return (lg === "cfb" || lg === "nfl") ? BOX_STATS_CFB : BOX_STATS_BBALL;
@@ -3974,7 +4059,7 @@ function boxFootballSection(title, headers, rowsHtml) {
     </table>
   </div>`;
 }
-function boxFootballColumn(name, logoSrc, players, accent, injuredKeys, league) {
+function boxFootballColumn(name, logoSrc, players, accent, injuredKeys, league, teamId) {
   const side = players.length && players[0].side ? players[0].side : "";
   // Only the starting QB — never list backups in Passing (or as rush crumbs).
   const passingAll = players
@@ -4071,14 +4156,14 @@ function boxFootballColumn(name, logoSrc, players, accent, injuredKeys, league) 
   ].filter(Boolean).join("") || `<p class="est">No Redzone Labs projections for this side.</p>`;
 
   return `<section class="box-col">
-    <h3>${logo(logoSrc, name, league)}${escapeHtml(name)}</h3>
+    <h3>${logo(logoSrc, name, league, teamId)}${escapeHtml(name)}</h3>
     <p class="est">Projected box · sportsbook players · ESPN depth</p>
     ${body}
   </section>`;
 }
-function boxColumn(name, logoSrc, players, accent, league, injuredKeys) {
+function boxColumn(name, logoSrc, players, accent, league, injuredKeys, teamId) {
   if (isFootballBox(league)) {
-    return boxFootballColumn(name, logoSrc, players, accent, injuredKeys, league);
+    return boxFootballColumn(name, logoSrc, players, accent, injuredKeys, league, teamId);
   }
   const cols = boxStatsFor(league);
   const side = players.length && players[0].side ? players[0].side : "";
@@ -4108,7 +4193,7 @@ function boxColumn(name, logoSrc, players, accent, league, injuredKeys) {
     ? "Projected box · this game"
     : "Projected box · rotation prior";
   return `<section class="box-col">
-    <h3>${logo(logoSrc, name, league)}${escapeHtml(name)}</h3>
+    <h3>${logo(logoSrc, name, league, teamId)}${escapeHtml(name)}</h3>
     <p class="est">${est}</p>
     <table class="box-table">
       <thead><tr><th class="left">Player</th>${cols.map(([, label]) => `<th>${label}</th>`).join("")}</tr></thead>
@@ -4221,20 +4306,27 @@ function boxHtml(payload, desk) {
     stadium || "",
     weather || "",
   ].filter(Boolean);
+  const awayId = (desk && desk.away_id) || game.away_id || "";
+  const homeId = (desk && desk.home_id) || game.home_id || "";
+  // Prefer CDN for NFL/CFB so the modal works even when /media is cold.
+  const awayLogo = espnLogoUrl(league, awayId)
+    || (desk && desk.away_logo) || game.away_logo || "";
+  const homeLogo = espnLogoUrl(league, homeId)
+    || (desk && desk.home_logo) || game.home_logo || "";
   return `<div class="box-banner">
-      <div class="box-id">${logo(desk && desk.away_logo, awayName, league, desk && desk.away_id)}<b>${escapeHtml(awayName)}</b><i style="background:${boxAccent(desk, "away")}"></i></div>
+      <div class="box-id">${logo(awayLogo, awayName, league, awayId)}<b>${escapeHtml(awayName)}</b><i style="background:${boxAccent(desk, "away")}"></i></div>
       <div class="box-scoreline">
         <small>Projected score</small>
         <b>${boxNum(awayScore) || "–"} – ${boxNum(homeScore) || "–"}</b>
         <span>${escapeHtml(boxWhen(desk, game))}</span>
       </div>
-      <div class="box-id">${logo(desk && desk.home_logo, homeName, league, desk && desk.home_id)}<b>${escapeHtml(homeName)}</b><i style="background:${boxAccent(desk, "home")}"></i></div>
+      <div class="box-id">${logo(homeLogo, homeName, league, homeId)}<b>${escapeHtml(homeName)}</b><i style="background:${boxAccent(desk, "home")}"></i></div>
     </div>
     ${meta.length ? `<div class="box-meta">${meta.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
     ${boxInjuries(injuries, awayName, homeName)}
     <div class="box-cols">
-      ${boxColumn(awayName, desk && desk.away_logo, away, boxAccent(desk, "away"), league, injuredKeys)}
-      ${boxColumn(homeName, desk && desk.home_logo, home, boxAccent(desk, "home"), league, injuredKeys)}
+      ${boxColumn(awayName, awayLogo, away, boxAccent(desk, "away"), league, injuredKeys, awayId)}
+      ${boxColumn(homeName, homeLogo, home, boxAccent(desk, "home"), league, injuredKeys, homeId)}
     </div>`;
 }
 function boxPayloadFromBoard(id, desk) {
@@ -4287,6 +4379,10 @@ function boxPayloadFromBoard(id, desk) {
       league: (desk && desk.league) || "cbb",
       away: (desk && desk.away) || "",
       home: (desk && desk.home) || "",
+      away_id: (desk && desk.away_id) || "",
+      home_id: (desk && desk.home_id) || "",
+      away_logo: (desk && desk.away_logo) || "",
+      home_logo: (desk && desk.home_logo) || "",
       game_date: (desk && desk.start) || "",
       sim_away_pts: desk && desk.sim_away,
       sim_home_pts: desk && desk.sim_home,
@@ -4301,9 +4397,11 @@ function boxPayloadFromBoard(id, desk) {
 }
 async function openBox(id) {
   const modal = $("boxModal");
-  const desk = ((state.book && state.book.games) || []).find((game) => (game.id || game.game) === id);
+  const desk = ((state.book && state.book.games) || []).find((game) => String(game.id || game.game) === String(id));
   $("boxBody").innerHTML = `<div class="empty">Loading the sim box score…</div>`;
   modal.classList.add("open");
+  // Never reuse a prior payload — resims / injury flips must show immediately.
+  delete boxCache[id];
   try {
     if (CBB_STATIC) {
       const payload = boxPayloadFromBoard(id, desk);
@@ -4313,7 +4411,9 @@ async function openBox(id) {
       return;
     }
     // Slim box payload skips 100MB+ player-ladder CSVs the table never renders.
-    const response = await fetch("/api/game/" + encodeURIComponent(id) + "?box=1&t=" + Date.now());
+    const response = await fetch("/api/game/" + encodeURIComponent(id) + "?box=1&t=" + Date.now(), {
+      cache: "no-store",
+    });
     if (!response.ok) throw new Error("missing");
     boxCache[id] = await response.json();
     $("boxBody").innerHTML = boxHtml(boxCache[id], desk);
@@ -4658,6 +4758,7 @@ function prefetchStaticLeagues(active) {
 }
 async function load() {
   $("table").innerHTML = `<div class="empty">Loading the board…</div>`;
+  clearBoxCache();
   const league = state.league || "cbb";
   const colorsUrl = CBB_STATIC ? `static/team_colors.json${assetV()}` : "/static/team_colors.json";
   // Parallel: colors are tiny and optional; don't block the board on them.
@@ -4712,7 +4813,11 @@ async function softReload() {
   try {
     const league = state.league || "cbb";
     delete _edgesCache[league];
-    await applyBoard(await fetchEdges(league));
+    clearBoxCache();
+    // Keep props on the board once they are open. A light poll used to
+    // replace them with game lines and the prop view went empty.
+    const keepProps = state.market === "prop" || !(state.book && state.book.props_pending);
+    await applyBoard(await fetchEdges(league, { withProps: keepProps }));
   } catch (err) {
     /* keep last board */
   }
